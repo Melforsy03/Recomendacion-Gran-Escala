@@ -1,0 +1,22 @@
+FROM python:3.9-alpine
+
+WORKDIR /app
+
+# Instalar dependencias del sistema
+RUN apk update && apk add --no-cache \
+    build-base \
+    linux-headers \
+    && rm -rf /var/cache/apk/*
+
+# Copiar requirements primero para cache de Docker
+COPY requirements.txt .
+
+# Instalar dependencias Python
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copiar el código de la aplicación
+COPY . .
+
+EXPOSE 8050
+
+CMD ["python", "dashboard.py"]

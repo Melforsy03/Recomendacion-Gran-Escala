@@ -1,0 +1,133 @@
+# ===========================================
+# .gitignore para Proyecto Big Data
+# Sistema de Recomendación a Gran Escala
+# ===========================================
+
+# 🐘 Hadoop
+hadoop-3.3.1/logs/
+hadoop-3.3.1/data/
+hadoop-3.3.1/tmp/
+hadoop-3.3.1/namenode/
+hadoop-3.3.1/datanode/
+hadoop-3.3.1/hadoop.tmp.dir
+hadoop-3.3.1
+# 📡 Kafka
+kafka_2.13-2.8.1/logs/
+kafka_2.13-2.8.1/data/
+kafka_2.13-2.8.1/kafka-logs/
+kafka_2.13-2.8.1
+# 🐍 Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+kafka_2.13-2.8.1.tgz
+# 🔧 Entornos Virtuales
+myenv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# 📊 Datos y Logs
+*.log
+logs/
+data/
+tmp/
+temp/
+*.csv
+*.jsonl
+*.parquet
+*.avro
+
+# 🗄️ Base de Datos
+*.db
+*.sqlite
+*.sqlite3
+
+# 🔐 Configuraciones sensibles
+*.key
+*.pem
+*.crt
+*.secret
+config.properties
+*.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 🖥️ Sistema
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Archivos de sistema
+*.pid
+*.seed
+*.pid.lock
+
+# Archivos de checkpoint
+checkpoint/
+checkpoints/
+*.checkpoint
+
+# Archivos temporales de procesamiento
+_processing/
+_tmp/
+_output/
+
+# Docker (si decides usarlo después)
+docker-compose.override.yml
+.dockerignore
+
+# Archivos de backup
+backup/
+*.backup
+*.bak
+
+# Archivos comprimidos (excepto los que necesites)
+*.gz
+*.tar
+*.zip
+*.7z
+
+# Documentación temporal
+_site/
+.sass-cache/
+.jekyll-cache/
+
+# Archivos de métricas temporales
+metrics/
+stats/
