@@ -3,12 +3,15 @@ import json
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 import time
-
+import os 
 class SimpleMetricsCollector:
     def __init__(self):
+        # Obtener el broker de Kafka desde variable de entorno
+        kafka_broker = os.getenv('KAFKA_BROKER', 'kafka:9092')  # <-- Cambiar aquí
+        
         self.consumer = KafkaConsumer(
             'movie-interactions',
-            bootstrap_servers='localhost:9092',
+            bootstrap_servers=kafka_broker,  # <-- Usar la variable aquí
             auto_offset_reset='latest',
             value_deserializer=lambda x: json.loads(x.decode('utf-8')),
             consumer_timeout_ms=1000
@@ -16,15 +19,16 @@ class SimpleMetricsCollector:
         
         # Estructuras para métricas
         self.interaction_counts = defaultdict(int)
-        self.user_activity = deque(maxlen=200)  # Últimos 200 usuarios
+        self.user_activity = deque(maxlen=200)
         self.movie_popularity = defaultdict(int)
-        self.movie_details = {}  # Almacenar detalles de películas
+        self.movie_details = {}
         self.ratings = defaultdict(list)
         self.genre_popularity = defaultdict(int)
         self.start_time = datetime.now()
         
         print("📊 Inicializando sistema de métricas...")
-    
+        print(f"📡 Conectado a Kafka en: {kafka_broker}")  # <-- Para debug
+        
     def calculate_metrics(self):
         """Calcular métricas en tiempo real"""
         current_time = datetime.now()

@@ -1,9 +1,8 @@
 version: '3.8'
 
 services:
-  # Zookeeper para Kafka
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.3.0
+    image: confluentinc/cp-zookeeper:7.4.0
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -12,9 +11,8 @@ services:
     networks:
       - kafka-network
 
-  # Kafka para streaming
   kafka:
-    image: confluentinc/cp-kafka:7.3.0
+    image: confluentinc/cp-kafka:7.4.0
     depends_on:
       - zookeeper
     environment:
@@ -30,7 +28,6 @@ services:
     networks:
       - kafka-network
 
-  # Base de datos para métricas (opcional)
   redis:
     image: redis:7-alpine
     ports:
@@ -38,11 +35,8 @@ services:
     networks:
       - kafka-network
 
-  # Aplicación Producer
   producer:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     depends_on:
       - kafka
     environment:
@@ -50,17 +44,14 @@ services:
       PYTHONUNBUFFERED: 1
     volumes:
       - ./movies.json:/app/movies.json
-      - ./producer_corregido.py:/app/producer.py
+      - ./producer.py:/app/producer.py
     command: python producer.py
     networks:
       - kafka-network
     restart: unless-stopped
 
-  # Aplicación Consumer
   consumer:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     depends_on:
       - kafka
       - redis
@@ -70,17 +61,14 @@ services:
       PYTHONUNBUFFERED: 1
     volumes:
       - ./movies.json:/app/movies.json
-      - ./simple_consumer_corregido.py:/app/consumer.py
+      - ./simple_consumer.py:/app/consumer.py
     command: python consumer.py
     networks:
       - kafka-network
     restart: unless-stopped
 
-  # Dashboard
   dashboard:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     depends_on:
       - kafka
       - redis

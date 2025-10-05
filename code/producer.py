@@ -7,15 +7,17 @@ import os
 
 class MovieInteractionProducer:
     def __init__(self):
+        # Obtener el broker de Kafka desde variable de entorno o usar valor por defecto
+        kafka_broker = os.getenv('KAFKA_BROKER', 'kafka:9092')  # <-- Cambiar aquí
+        
         self.producer = KafkaProducer(
-            bootstrap_servers='localhost:9092',
+            bootstrap_servers=kafka_broker,  # <-- Usar la variable aquí
             value_serializer=lambda v: json.dumps(v).encode('utf-8')
         )
         
-        # CARGAR PELÍCULAS DESDE ARCHIVO JSON
         self.movies = self.load_movies_from_json()
         print(f"✅ Cargadas {len(self.movies)} películas desde movies.json")
-    
+        print(f"📡 Conectado a Kafka en: {kafka_broker}")  # <-- Para debug
     def load_movies_from_json(self):
         """Carga las películas desde el archivo movies.json"""
         try:

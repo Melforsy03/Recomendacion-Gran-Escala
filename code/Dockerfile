@@ -4,22 +4,20 @@ WORKDIR /app
 
 # Instalar dependencias del sistema
 RUN apt-get update && apt-get install -y \
-    netcat-openbsd \
+    gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar requirements primero para cache de Docker
+# Copiar requirements primero para cachear dependencias
 COPY requirements.txt .
 
-# Instalar dependencias Python
+# Instalar dependencias de Python
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar el código de la aplicación
 COPY . .
 
-# Salud para verificar que el contenedor está listo
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import socket; socket.create_connection(('localhost', 8050), timeout=5)" || exit 1
-
+# Exponer puerto para el dashboard
 EXPOSE 8050
 
+# Comando por defecto (se puede sobreescribir en docker-compose)
 CMD ["python", "dashboard.py"]
