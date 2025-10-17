@@ -131,3 +131,9 @@ _site/
 # Archivos de métricas temporales
 metrics/
 stats/
+
+# Archivos de Compilación
+*.aux
+*.fls
+*.out
+*.fdb_latexmk

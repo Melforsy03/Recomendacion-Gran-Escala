@@ -1,7 +1,7 @@
 \documentclass[11pt,a4paper]{article}
 
 % --- Paquetes básicos ---
-\usepackage[spanish,es-nodecimaldot]{babel}
+\usepackage[spanish,es-nodecimaldot,shorthands=off]{babel}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
@@ -78,6 +78,8 @@ Analizar y visualizar en tiempo real las interacciones de usuarios con película
 \subsection*{Diagrama del Pipeline}
 
 \begin{center}
+% Desactivar la shorthand "!" de babel para evitar conflictos con TikZ (p. ej. "accent!10")
+\shorthandoff{!}
 \begin{tikzpicture}[
   node distance=1.9cm and 1.2cm,
   box/.style={draw, rounded corners, minimum width=2.8cm, minimum height=0.9cm, align=center, thick, fill=gray!10},
@@ -104,6 +106,7 @@ Analizar y visualizar en tiempo real las interacciones de usuarios con película
 \draw[->, thick] (sparkredis.south) |- (yarn.north);
 \draw[->, thick] (hdfs.south) |- (batch.north);
 \end{tikzpicture}
+\shorthandon{!}
 \end{center}
 
 \subsection*{Enfoque: Combinación Batch + Streaming}
