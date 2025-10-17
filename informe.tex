@@ -1,0 +1,144 @@
+\documentclass[11pt,a4paper]{article}
+
+% --- Paquetes básicos ---
+\usepackage[spanish,es-nodecimaldot]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue}
+\usepackage{titlesec}
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+\usepackage{graphicx}
+
+% --- TikZ para el diagrama ---
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,shapes.misc}
+
+% --- Estilos ---
+\definecolor{accent}{HTML}{2E86AB}
+\titleformat{\section}{\Large\bfseries\color{accent}}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{0.5em}{}
+
+\setlist[itemize]{leftmargin=1.4em}
+\setlist[enumerate]{leftmargin=1.6em}
+
+% --- Portada simple ---
+\title{\textbf{Sistema Big Data para Interacciones con Películas}\\[2mm]
+\large Descripción de proyecto, arquitectura y componentes}
+\author{Equipo de Proyecto}
+\date{\today}
+
+\begin{document}
+\maketitle
+\vspace{-0.5em}
+\hrule
+\vspace{1.0em}
+
+\section{DESCRIPCIÓN DEL PROYECTO}
+
+\subsection*{Objetivo Central}
+Analizar y visualizar en tiempo real las interacciones de usuarios con películas mediante un \textit{pipeline} completo de Big Data que combina procesamiento en \textbf{streaming} para métricas inmediatas y procesamiento \textbf{batch} para análisis históricos, permitiendo la detección de tendencias y patrones de comportamiento.
+
+\subsection*{Dataset Seleccionado}
+\begin{itemize}
+  \item \textbf{Nombre:} \textit{Movies Dataset}
+  \item \textbf{Formato:} JSON
+\end{itemize}
+
+\subsection*{Volumen}
+\begin{itemize}
+  \item 100 películas con información completa.
+  \item \textbf{Streaming continuo:} generación de 1 interacción cada 2 segundos (1{,}800 interacciones/hora).
+  \item \textbf{Almacenamiento histórico:} todos los datos se persisten en HDFS para análisis batch.
+  \item \textbf{Simulación de Big Data:} arquitectura escalable que puede manejar millones de registros.
+\end{itemize}
+
+\subsection*{Características}
+\begin{itemize}
+  \item \textbf{Atributos estructurados:} ID, nombre, género, \textit{rating}, popularidad, descripción.
+  \item \textbf{Temporalidad:} marcas de tiempo (\textit{timestamps}) precisas para cada interacción.
+  \item \textbf{Etiquetas:} tipos de interacción (\texttt{click}, \texttt{view}, \texttt{rating}, \texttt{purchase}).
+  \item \textbf{Datos limpios:} estructura consistente y validada.
+  \item \textbf{Metadatos ricos:} información completa de películas para análisis multidimensional.
+\end{itemize}
+
+\subsection*{Pertinencia}
+\begin{itemize}
+  \item Relación directa con el objetivo de analizar comportamiento de usuarios.
+  \item Datos realistas que simulan plataformas de \textit{streaming} reales.
+  \item Estructura flexible que permite múltiples tipos de análisis.
+  \item Escalabilidad demostrada para crecer en volumen y complejidad.
+\end{itemize}
+
+\subsection*{Diagrama del Pipeline}
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=1.9cm and 1.2cm,
+  box/.style={draw, rounded corners, minimum width=2.8cm, minimum height=0.9cm, align=center, thick, fill=gray!10},
+  smallbox/.style={draw, rounded corners, minimum width=3.0cm, minimum height=0.9cm, align=center, thick, fill=gray!10},
+  >={Stealth[length=2.2mm]},
+  every node/.style={font=\small}
+]
+% Fila principal
+\node[box, fill=accent!10] (producer) {Producer};
+\node[box, right=of producer] (kafka) {Kafka};
+\node[box, right=of kafka] (sparkredis) {Spark \& Redis};
+\node[box, right=of sparkredis] (hdfs) {HDFS};
+\node[box, right=of hdfs] (dash) {Dashboard};
+
+\draw[->, thick] (producer) -- (kafka);
+\draw[->, thick] (kafka) -- (sparkredis);
+\draw[->, thick] (sparkredis) -- (hdfs);
+\draw[->, thick] (hdfs) -- (dash);
+
+% Rama inferior
+\node[smallbox, below=1.2cm of sparkredis, xshift=-1.6cm] (yarn) {YARN \& MapReduce};
+\node[smallbox, below=1.2cm of hdfs, xshift=1.6cm] (batch) {Batch \& Spark Jobs};
+
+\draw[->, thick] (sparkredis.south) |- (yarn.north);
+\draw[->, thick] (hdfs.south) |- (batch.north);
+\end{tikzpicture}
+\end{center}
+
+\subsection*{Enfoque: Combinación Batch + Streaming}
+Arquitectura \textbf{Lambda} que combina procesamiento en tiempo real para métricas inmediatas y procesamiento \textbf{batch} para análisis profundos.
+
+\section{Componentes y Funciones}
+
+\subsection*{Capa de Ingesta (Streaming)}
+\begin{itemize}
+  \item \textbf{Producer:} genera datos simulados de interacciones de usuarios cada 2 segundos.
+  \item \textbf{Kafka:} sistema de mensajería distribuido que \emph{bufferiza} los datos en tiempo real.
+\end{itemize}
+
+\subsection*{Capa de Procesamiento (Streaming + Batch)}
+\begin{itemize}
+  \item \textbf{Spark Consumer:} procesa datos en tiempo real, calcula métricas y almacena en Redis.
+  \item \textbf{Redis:} base de datos en memoria para métricas en tiempo real del \textit{dashboard}.
+  \item \textbf{HDFS:} almacenamiento distribuido para todos los datos históricos.
+\end{itemize}
+
+\subsection*{Capa de Análisis (Batch)}
+\begin{itemize}
+  \item \textbf{Batch Processor:} ejecuta análisis periódicos sobre datos históricos en HDFS.
+  \item \textbf{MapReduce con YARN:} procesamiento distribuido de grandes volúmenes de datos.
+  \item \textbf{Spark Jobs:} análisis avanzados y agregaciones complejas.
+\end{itemize}
+
+\subsection*{Capa de Visualización}
+\begin{itemize}
+  \item \textbf{Dashboard:} interfaz web en tiempo real que muestra métricas actualizadas cada 3 segundos.
+\end{itemize}
+
+\vfill
+\begin{tcolorbox}[colback=accent!5,colframe=accent,title=Resumen]
+Este documento describe un \textit{pipeline} híbrido (Lambda) que integra \textbf{streaming} (métricas inmediatas con Kafka, Spark y Redis) y \textbf{batch} (análisis históricos con HDFS, YARN/MapReduce y \textit{Spark jobs}) para modelar y visualizar el comportamiento de usuarios en una plataforma de películas.
+\end{tcolorbox}
+
+\end{document}

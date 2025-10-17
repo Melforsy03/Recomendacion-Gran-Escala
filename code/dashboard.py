@@ -161,6 +161,71 @@ class DockerDataStream:
         if len(self.data['timestamps']) > 20:
             self.data['timestamps'].pop(0)
             self.data['active_users'].pop(0)
+            # dashboard.py - AGREGAR ESTE MÉTODO A LA CLASE DockerDataStream
+
+    def get_real_redis_metrics(self):
+        """Obtener métricas reales desde Redis"""
+        try:
+            if not self.redis_client:
+                return self.generate_realistic_data()
+            
+            # Obtener métricas de Redis
+            total_interactions = int(self.redis_client.get('total_interactions') or 0)
+            active_users = self.redis_client.zcount('active_users', 
+                                                    datetime.now().timestamp() - 300, 
+                                                    '+inf')
+            
+            # Obtener interacciones por tipo
+            interactions_by_type = {}
+            for itype in self.interaction_types:
+                count = self.redis_client.get(f'total_{itype}') or 0
+                interactions_by_type[itype] = int(count)
+            
+            # Obtener popularidad de películas
+            movie_interactions = {}
+            for movie in self.movies:
+                movie_key = f"movie:{movie['ID']}"
+                total = self.redis_client.hget(movie_key, 'total_interactions')
+                movie_interactions[movie['name']] = int(total) if total else 0
+            
+            # Ratings promedio
+            movie_ratings = {}
+            for movie in self.movies:
+                rating_key = f"ratings:{movie['ID']}"
+                ratings = self.redis_client.lrange(rating_key, 0, -1)
+                if ratings:
+                    avg_rating = sum(float(r) for r in ratings) / len(ratings)
+                    movie_ratings[movie['name']] = round(avg_rating, 2)
+                else:
+                    movie_ratings[movie['name']] = movie['puan'] / 2
+            
+            # Actualizar estructura de datos
+            current_time = datetime.now()
+            self.data['timestamps'].append(current_time)
+            self.data['active_users'].append(active_users)
+            
+            for itype in self.interaction_types:
+                self.data['interactions_by_type'][itype].append(interactions_by_type.get(itype, 0))
+                if len(self.data['interactions_by_type'][itype]) > 20:
+                    self.data['interactions_by_type'][itype].pop(0)
+            
+            for movie_name in movie_interactions:
+                self.data['movie_popularity'][movie_name].append(movie_interactions[movie_name])
+                self.data['avg_ratings'][movie_name].append(movie_ratings.get(movie_name, 3.0))
+                
+                if len(self.data['movie_popularity'][movie_name]) > 20:
+                    self.data['movie_popularity'][movie_name].pop(0)
+                if len(self.data['avg_ratings'][movie_name]) > 20:
+                    self.data['avg_ratings'][movie_name].pop(0)
+            
+            # Limitar historial
+            if len(self.data['timestamps']) > 20:
+                self.data['timestamps'].pop(0)
+                self.data['active_users'].pop(0)
+                
+        except Exception as e:
+            print(f"❌ Error obteniendo métricas de Redis: {e}")
+            self.generate_realistic_data()
 
 # Crear aplicación Dash
 app = Dash(__name__)
@@ -231,7 +296,7 @@ app.layout = html.Div([
 def update_dashboard(n):
     # Generar nuevos datos
     if data_stream.use_redis:
-        data_stream.get_redis_metrics()
+        data_stream.get_real_redis_metrics()
     else:
         data_stream.generate_realistic_data()
     

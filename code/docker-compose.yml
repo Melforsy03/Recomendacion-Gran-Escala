@@ -1,92 +1,271 @@
-version: '3.8'
-
+# docker-compose.yml COMPLETO con HDFS + YARN + Spark
 services:
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.4.0
+    image: confluentinc/cp-zookeeper:6.2.0
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     ports:
       - "2181:2181"
-    networks:
-      - kafka-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   kafka:
-    image: confluentinc/cp-kafka:7.4.0
+    image: confluentinc/cp-kafka:6.2.0
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     ports:
       - "9092:9092"
-    networks:
-      - kafka-network
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
-    networks:
-      - kafka-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
-  producer:
-    build: .
-    depends_on:
-      - kafka
+  # HDFS - NameNode
+  hadoop-namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
     environment:
-      KAFKA_BROKER: kafka:9092
-      PYTHONUNBUFFERED: 1
+      - CLUSTER_NAME=test
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
     volumes:
-      - ./movies.json:/app/movies.json
-      - ./producer.py:/app/producer.py
-    command: python producer.py
-    networks:
-      - kafka-network
-    restart: unless-stopped
+      - hadoop_namenode:/hadoop/dfs/name
+      - ./hadoop-data:/data
+    ports:
+      - "9870:9870"  # HDFS Web UI
+      - "9000:9000"  # HDFS Service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9870"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
 
-  consumer:
-    build: .
-    depends_on:
-      - kafka
-      - redis
+  # HDFS - DataNode
+  hadoop-datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
     environment:
-      KAFKA_BROKER: kafka:9092
-      REDIS_HOST: redis
-      PYTHONUNBUFFERED: 1
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
     volumes:
-      - ./movies.json:/app/movies.json
-      - ./simple_consumer.py:/app/consumer.py
-    command: python consumer.py
-    networks:
-      - kafka-network
-    restart: unless-stopped
+      - hadoop_datanode:/hadoop/dfs/data
+      - ./hadoop-data:/data
+    depends_on:
+      - hadoop-namenode
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9864"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # YARN ResourceManager
+  hadoop-resourcemanager:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    container_name: resourcemanager
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
+      - YARN_CONF_yarn_resourcemanager_address=resourcemanager:8032
+      - YARN_CONF_yarn_resourcemanager_scheduler_address=resourcemanager:8030
+      - YARN_CONF_yarn_resourcemanager_resource_tracker_address=resourcemanager:8031
+    depends_on:
+      - hadoop-namenode
+      - hadoop-datanode
+    ports:
+      - "8088:8088"  # YARN Web UI
+      - "8030:8030"  # Scheduler
+      - "8031:8031"  # Resource Tracker
+      - "8032:8032"  # Resource Manager
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+
+  # YARN NodeManager
+  hadoop-nodemanager:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    container_name: nodemanager
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - YARN_CONF_yarn_nodemanager_hostname=nodemanager
+      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
+    depends_on:
+      - hadoop-resourcemanager
+    ports:
+      - "8042:8042"  # NodeManager Web UI
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8042"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # Spark Master (puede ejecutar en YARN también)
+  spark-master:
+    image: apache/spark:3.5.0
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+      --host spark-master
+      --port 7077
+      --webui-port 8080
+    environment:
+      - SPARK_LOCAL_IP=spark-master
+      - SPARK_MASTER_WEBUI_PORT=8080
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    volumes:
+      - ./hadoop-data:/data
+      - ./spark-config:/opt/spark/conf
+    depends_on:
+      - hadoop-resourcemanager
+
+  # Spark Worker
+  spark-worker:
+    image: apache/spark:3.5.0
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077
+      --webui-port 8081
+    environment:
+      - SPARK_LOCAL_IP=spark-worker
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=2g
+      - SPARK_WORKER_WEBUI_PORT=8081
+    depends_on:
+      - spark-master
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./hadoop-data:/data
+      - ./spark-config:/opt/spark/conf
+
+  # Spark History Server (opcional)
+  spark-history-server:
+    image: apache/spark:3.5.0
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.history.HistoryServer
+    environment:
+      - SPARK_HISTORY_OPTS=-Dspark.history.fs.logDirectory=hdfs://namenode:9000/spark-logs -Dspark.history.ui.port=18080
+    ports:
+      - "18080:18080"
+    depends_on:
+      - hadoop-namenode
+    volumes:
+      - ./spark-config:/opt/spark/conf
 
   dashboard:
-    build: .
-    depends_on:
-      - kafka
-      - redis
-      - consumer
-    environment:
-      KAFKA_BROKER: kafka:9092
-      REDIS_HOST: redis
-      PYTHONUNBUFFERED: 1
+    build: 
+      context: .
+      dockerfile: Dockerfile.dashboard
+    command: ["python", "dashboard.py"]   
     ports:
       - "8050:8050"
+    environment:
+      - REDIS_HOST=redis
+      - KAFKA_BROKER=kafka:9092
+      - HDFS_NAMENODE=namenode:9000
+      - YARN_RESOURCEMANAGER=resourcemanager:8088
     volumes:
       - ./movies.json:/app/movies.json
       - ./dashboard.py:/app/dashboard.py
-    command: python dashboard.py
-    networks:
-      - kafka-network
-    restart: unless-stopped
+      - ./hadoop-data:/data
+      - ./mapreduce_processor.py:/app/mapreduce_processor.py
+    depends_on:
+      - redis
+      - kafka
+
+  producer:
+    build: 
+      context: .
+      dockerfile: Dockerfile.app
+    command: ["python", "producer.py"]
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - HDFS_NAMENODE=namenode:9000
+    volumes:
+      - ./movies.json:/app/movies.json
+      - ./producer.py:/app/producer.py
+      - ./hadoop-data:/data
+    depends_on:
+      - kafka
+
+  consumer:
+    build: 
+      context: .
+      dockerfile: Dockerfile.app
+    command: ["python", "simple_consumer.py"]
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - HDFS_NAMENODE=namenode:9000
+      - REDIS_HOST=redis
+      - HDFS_BUFFER_DIR=/data/hdfs_buffer
+    volumes:
+      - ./movies.json:/app/movies.json
+      - ./simple_consumer.py:/app/simple_consumer.py
+      - ./hadoop-data:/data
+    depends_on:
+      - kafka
+      - redis
+      - hadoop-namenode
+
+  batch-processor:
+    build: 
+      context: .
+      dockerfile: Dockerfile.app
+    command: ["python", "batch_processor.py"]
+    environment:
+      - HDFS_NAMENODE=namenode:9000
+      - YARN_RESOURCEMANAGER=resourcemanager:8088
+      - SPARK_MASTER=spark://spark-master:7077
+    volumes:
+      - ./movies.json:/app/movies.json
+      - ./batch_processor.py:/app/batch_processor.py
+      - ./mapreduce_processor.py:/app/mapreduce_processor.py
+      - ./hadoop-data:/data
+    depends_on:
+      - hadoop-namenode
+      - hadoop-resourcemanager
+      - spark-master
+
+  mapreduce-processor:
+    build: 
+      context: .
+      dockerfile: Dockerfile.app
+    command: ["python", "mapreduce_processor.py"]
+    environment:
+      - HDFS_NAMENODE=namenode:9000
+      - YARN_RESOURCEMANAGER=resourcemanager:8088
+    volumes:
+      - ./movies.json:/app/movies.json
+      - ./mapreduce_processor.py:/app/mapreduce_processor.py
+      - ./hadoop-data:/data
+    depends_on:
+      - hadoop-namenode
+      - hadoop-resourcemanager
+
+volumes:
+  hadoop_namenode:
+  hadoop_datanode:
 
 networks:
-  kafka-network:
-    driver: bridge
+  default:
+    name: bigdata-network
