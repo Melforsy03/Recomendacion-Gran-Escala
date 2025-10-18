@@ -137,3 +137,5 @@ stats/
 *.fls
 *.out
 *.fdb_latexmk
+
+electivo/spark_env

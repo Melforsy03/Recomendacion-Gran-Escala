@@ -1,0 +1,27 @@
+//////logs en tiempo real 
+# Ver logs del producer (genera datos)
+docker-compose logs -f producer
+
+# Ver logs del consumer (procesa y guarda)
+docker-compose logs -f consumer
+
+# Ver logs del dashboard
+docker-compose logs -f dashboard
+
+/////////
+1. Acceder a la interfaz web de HDFS 🌐
+bash
+
+# Navegador web:
+http://localhost:9870
+
+    Haz clic en "Utilities" → "Browse the file system"
+
+    Verás directorios como /data, /results, /spark-logs
+
+/////////////////
+# Ver resultados de trabajos MapReduce
+docker-compose exec hadoop-namenode hdfs dfs -ls /results/mapreduce
+
+# Ver análisis de popularidad
+docker-compose exec hadoop-namenode hdfs dfs -cat /results/mapreduce/popularity_*/part-* | head -10
