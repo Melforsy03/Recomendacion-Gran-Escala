@@ -1,0 +1,36 @@
+# Usa la imagen oficial de Spark desde Docker Hub
+FROM apache/spark:latest
+
+# Establecer variables de entorno necesarias
+ENV SPARK_HOME=/opt/spark
+ENV PATH=$SPARK_HOME/bin:$PATH
+ENV HADOOP_CONF_DIR=/etc/hadoop/conf
+ENV PYSPARK_PYTHON=python3
+ENV PYSPARK_DRIVER_PYTHON=python3
+
+# Instalar dependencias adicionales como Java, Python y otras necesarias
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    openjdk-8-jdk \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copiar el archivo requirements.txt al contenedor
+COPY requirements.txt /opt/spark/requirements.txt
+
+# Instalar las dependencias de Python desde requirements.txt
+RUN pip3 install --no-cache-dir -r /opt/spark/requirements.txt
+
+# Copiar los archivos de tu proyecto dentro del contenedor
+COPY . /opt/spark
+
+# Copiar las configuraciones de Hadoop al contenedor
+COPY config/hadoop/* /etc/hadoop/conf/
+
+# Establecer el directorio de trabajo
+WORKDIR /opt/spark
+
+# Exponer puertos necesarios (Spark UI y YARN)
+EXPOSE 4040 8088
+
+# Comando para ejecutar el script de Spark
+CMD ["spark-submit", "--master", "yarn", "--deploy-mode", "cluster", "movies_processor.py"]
