@@ -1,0 +1,211 @@
+networks:
+  datapipeline:
+    driver: bridge
+
+services:
+  # --- HDFS & YARN Cluster (Hadoop 3.2.1 with Java 8) ---
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    hostname: namenode
+    environment:
+      - CLUSTER_NAME=datapipeline
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - CORE_CONF_hadoop_http_staticuser_user=root
+      - HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check=false
+      - HDFS_CONF_dfs_permissions_enabled=false
+      - HDFS_CONF_dfs_webhdfs_enabled=true
+    volumes:
+      - namenode_data:/hadoop/dfs/name
+      - ./shared:/shared
+    ports:
+      - "9870:9870"
+      - "9000:9000"
+    networks:
+      - datapipeline
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9870"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    hostname: datanode
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - CORE_CONF_hadoop_http_staticuser_user=root
+      - HDFS_CONF_dfs_permissions_enabled=false
+    volumes:
+      - datanode_data:/hadoop/dfs/data
+      - ./shared:/shared
+    depends_on:
+      - namenode
+    networks:
+      - datapipeline
+    healthcheck:
+      test: ["CMD", "test", "-d", "/hadoop/dfs/data"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  resourcemanager:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    container_name: resourcemanager
+    hostname: resourcemanager
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - YARN_CONF_yarn_log___aggregation___enable=true
+      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
+      - YARN_CONF_yarn_resourcemanager_address=resourcemanager:8032
+      - YARN_CONF_yarn_resourcemanager_scheduler_address=resourcemanager:8030
+      - YARN_CONF_yarn_resourcemanager_resource__tracker_address=resourcemanager:8031
+      - YARN_CONF_yarn_nodemanager_aux___services=mapreduce_shuffle
+      - YARN_CONF_yarn_nodemanager_resource_memory___mb=4096
+      - YARN_CONF_yarn_scheduler_maximum___allocation___mb=4096
+      - YARN_CONF_yarn_scheduler_minimum___allocation___mb=512
+    volumes:
+      - ./shared:/shared
+    depends_on:
+      - namenode
+    ports:
+      - "8088:8088"
+      - "8032:8032"
+    networks:
+      - datapipeline
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  nodemanager:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    container_name: nodemanager
+    hostname: nodemanager
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
+      - YARN_CONF_yarn_resourcemanager_address=resourcemanager:8032
+      - YARN_CONF_yarn_resourcemanager_scheduler_address=resourcemanager:8030
+      - YARN_CONF_yarn_resourcemanager_resource__tracker_address=resourcemanager:8031
+      - YARN_CONF_yarn_nodemanager_aux___services=mapreduce_shuffle
+      - YARN_CONF_yarn_nodemanager_resource_memory___mb=4096
+      - YARN_CONF_yarn_nodemanager_resource_cpu___vcores=2
+      - YARN_CONF_yarn_nodemanager_vmem___check___enabled=false
+      - YARN_CONF_yarn_nodemanager_pmem___check___enabled=false
+    volumes:
+      - ./shared:/shared
+    depends_on:
+      - namenode
+      - resourcemanager
+    ports:
+      - "8042:8042"
+    networks:
+      - datapipeline
+
+  # --- Spark 3.4.1 with support for YARN and Kafka (using official Apache Spark image) ---
+  spark-master:
+    image: apache/spark:3.4.1
+    container_name: spark-master
+    hostname: spark-master
+    environment:
+      - SPARK_MODE=master
+      - SPARK_MASTER_WEBUI_PORT=8080
+      - HADOOP_CONF_DIR=/opt/hadoop-conf
+      - YARN_CONF_DIR=/opt/hadoop-conf
+      - PATH=/opt/spark/bin:/opt/spark/sbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    volumes:
+      - ./shared:/opt/spark/work-dir
+      - ./hadoop-conf:/opt/hadoop-conf:ro
+      - spark_master_data:/opt/spark/data
+    ports:
+      - "7077:7077"
+      - "8080:8080"
+      - "4040:4040"
+    depends_on:
+      - namenode
+      - resourcemanager
+    networks:
+      - datapipeline
+    command: >
+      bash -c "
+      /opt/spark/sbin/start-master.sh && tail -f /dev/null
+      "
+
+  spark-worker:
+    image: apache/spark:3.4.1
+    container_name: spark-worker
+    hostname: spark-worker
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=2G
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_WEBUI_PORT=8081
+      - HADOOP_CONF_DIR=/opt/hadoop-conf
+      - YARN_CONF_DIR=/opt/hadoop-conf
+      - PATH=/opt/spark/bin:/opt/spark/sbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    volumes:
+      - ./shared:/opt/spark/work-dir
+      - ./hadoop-conf:/opt/hadoop-conf:ro
+      - spark_worker_data:/opt/spark/data
+    ports:
+      - "8081:8081"
+    depends_on:
+      - spark-master
+    networks:
+      - datapipeline
+    command: >
+      bash -c "
+      /opt/spark/sbin/start-worker.sh spark://spark-master:7077 && tail -f /dev/null
+      "
+
+  # --- Kafka 3.5 Cluster (Java 8 compatible) ---
+  zookeeper:
+    image: confluentinc/cp-zookeeper:6.2.0
+    container_name: zookeeper
+    hostname: zookeeper
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - datapipeline
+
+  kafka:
+    image: confluentinc/cp-kafka:6.2.0
+    container_name: kafka
+    hostname: kafka
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      PATH: /usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/sbin:/bin
+    depends_on:
+      - zookeeper
+    networks:
+      - datapipeline
+
+volumes:
+  namenode_data:
+  datanode_data:
+  spark_master_data:
+  spark_worker_data:
+  zookeeper_data:
+  zookeeper_log:
+  kafka_data:
