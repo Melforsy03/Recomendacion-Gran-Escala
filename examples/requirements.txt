@@ -1,0 +1,3 @@
+# Dependencias Python para los ejemplos
+kafka-python==2.0.2
+pyspark==3.4.1
