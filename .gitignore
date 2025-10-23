@@ -139,3 +139,5 @@ stats/
 *.fdb_latexmk
 
 electivo/spark_env
+
+eda/
