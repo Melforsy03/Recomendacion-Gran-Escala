@@ -371,3 +371,56 @@ Este es un proyecto educativo para sistemas de recomendación en gran escala. Si
 ### 📄 Licencia
 
 Este proyecto es de código abierto y está disponible bajo la licencia MIT.
+
+## 🧠 Sistema de Recomendación a Gran Escala (Streaming + Dashboard)
+
+Esta repo incluye un pipeline de referencia para recomendaciones y métricas en tiempo real usando el dataset de ejemplo `movies/data/raw/movies.json`:
+
+Arquitectura lógica:
+
+```text
+Kafka topic 'events'  <-- productor simulado (recomendaciones + interacciones)
+           │
+           ▼
+Spark Structured Streaming (metrics_streaming.py)
+           │
+           ├──► Kafka topic 'metrics' (acceptance_rate, precision, active_users, engagement, top_products)
+           ▼
+API FastAPI (WebSocket/REST) ───► Dashboard (Chart.js)
+```
+
+### Cómo ejecutarlo
+
+1) Inicia la infraestructura:
+
+```bash
+./scripts/start-system.sh
+```
+
+1) Lanza el job de métricas (Spark Streaming):
+
+```bash
+./scripts/run-streaming-metrics.sh
+```
+
+1) Arranca el productor de eventos (host):
+
+```bash
+./scripts/run-producer-events.sh
+```
+
+1) Abre el dashboard en tu navegador:
+
+- API + Dashboard: <http://localhost:8000>
+
+Verás en tiempo real:
+
+- Tasa de aceptación (CTR) y precisión (proxy)
+- Productos más sugeridos (Top 10)
+- Usuarios activos por minuto
+- Impacto en engagement (eventos promedio por usuario)
+
+Notas:
+
+- El tópico Kafka `events` se auto-crea al enviar los primeros mensajes.
+- El job publica métricas en `metrics`; la API las consume y hace broadcast por WebSocket.

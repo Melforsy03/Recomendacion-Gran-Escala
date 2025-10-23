@@ -24,10 +24,10 @@ services:
     networks:
       - datapipeline
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9870"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD", "curl", "-fsS", "http://localhost:9870"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   datanode:
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
@@ -46,9 +46,9 @@ services:
       - datapipeline
     healthcheck:
       test: ["CMD", "test", "-d", "/hadoop/dfs/data"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   resourcemanager:
     image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
@@ -75,10 +75,10 @@ services:
     networks:
       - datapipeline
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8088"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD", "curl", "-fsS", "http://localhost:8088/ws/v1/cluster/info"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
 
   nodemanager:
     image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
@@ -133,6 +133,12 @@ services:
       bash -c "
       /opt/spark/sbin/start-master.sh && tail -f /dev/null
       "
+    healthcheck:
+      # Chequea que el puerto RPC 7077 esté aceptando conexiones dentro del contenedor
+      test: ["CMD-SHELL", "bash -lc 'echo > /dev/tcp/localhost/7077'"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
 
   spark-worker:
     image: apache/spark:3.4.1
@@ -198,6 +204,23 @@ services:
       PATH: /usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/sbin:/bin
     depends_on:
       - zookeeper
+    networks:
+      - datapipeline
+
+  # --- API para métricas y dashboard en tiempo real ---
+  api:
+    build:
+      context: ./movies/api
+      dockerfile: Dockerfile
+    container_name: recs-api
+    hostname: recs-api
+    environment:
+      - KAFKA_BOOTSTRAP=kafka:9092
+      - METRICS_TOPIC=metrics
+    depends_on:
+      - kafka
+    ports:
+      - "8000:8000"
     networks:
       - datapipeline
 

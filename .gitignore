@@ -52,7 +52,11 @@ venv.bak/
 # 📊 Datos y Logs
 *.log
 logs/
-data/
+data/raw/*
+!data/raw/movies.json
+data/processed/
+data/models/
+data/analysis/
 tmp/
 temp/
 *.csv

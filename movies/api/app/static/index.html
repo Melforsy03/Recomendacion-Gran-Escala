@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard Recomendaciones - Tiempo Real</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+      body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Arial; margin: 0; background: #0b1220; color: #e6eaf2; }
+      header { padding: 16px 24px; background: #0f172a; border-bottom: 1px solid #1f2a44; position: sticky; top: 0; z-index: 10; }
+      h1 { font-size: 18px; margin: 0; }
+      .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; padding: 16px; }
+      .card { grid-column: span 6; background: #121a2e; border: 1px solid #1f2a44; border-radius: 12px; padding: 12px; }
+      .card h3 { margin: 0 0 8px; font-size: 14px; color: #9fb3d9; }
+      .card.small { grid-column: span 4; }
+      .footer { padding: 12px 16px; color: #8aa0c8; font-size: 12px; opacity: 0.9; }
+      canvas { width: 100% !important; height: 280px !important; }
+      @media (max-width: 1200px) { .card { grid-column: span 12; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>📊 Sistema de Recomendación a Gran Escala — Métricas en Tiempo Real</h1>
+    </header>
+    <main class="grid">
+      <section class="card">
+        <h3>Tasa de aceptación (CTR) / Precisión (proxy)</h3>
+        <canvas id="ctrChart"></canvas>
+      </section>
+      <section class="card">
+        <h3>Usuarios activos por minuto</h3>
+        <canvas id="usersChart"></canvas>
+      </section>
+      <section class="card">
+        <h3>Impacto en engagement (eventos promedio por usuario)</h3>
+        <canvas id="engChart"></canvas>
+      </section>
+      <section class="card">
+        <h3>Productos más sugeridos (Top 10)</h3>
+        <canvas id="topChart"></canvas>
+      </section>
+    </main>
+    <div class="footer">Conectado a WebSocket /ws — actualizaciones cada ~10s</div>
+    <script src="/static/webapp.js"></script>
+  </body>
+  </html>
