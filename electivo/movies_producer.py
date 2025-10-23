@@ -3,9 +3,37 @@ from pyspark.sql.functions import *
 from pyspark.sql.types import *
 import json
 import subprocess
+import os
+import sys
+
+# SILENCIAR TODOS LOS LOGS DE SPARK
+os.environ['PYSPARK_PYTHON'] = 'python3'
+os.environ['PYSPARK_DRIVER_PYTHON'] = 'python3'
+os.environ['SPARK_LOCAL_IP'] = '127.0.0.1'
+
+# Configurar Spark para ser SILENCIOSO
+spark = SparkSession.builder \
+    .appName("MoviesProducerYARN") \
+    .master("yarn") \
+    .config("spark.sql.adaptive.enabled", "true") \
+    .config("spark.executor.memory", "512m") \
+    .config("spark.driver.memory", "512m") \
+    .config("spark.ui.enabled", "false") \
+    .config("spark.driver.bindAddress", "127.0.0.1") \
+    .config("spark.driver.host", "127.0.0.1") \
+    .config("spark.sql.warehouse.dir", "/tmp/spark-warehouse") \
+    .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
+    .getOrCreate()
+
+# SILENCIAR LOGS
+spark.sparkContext.setLogLevel("ERROR")
+sc = spark.sparkContext
+sc.setLogLevel("ERROR")
 
 print("🎬 MOVIES PRODUCER CON YARN, SPARK Y HDFS")
+print("=" * 60)
 
+# El resto de tu código SIN CAMBIOS...
 # Configurar Spark para YARN
 spark = SparkSession.builder \
     .appName("MoviesProducerYARN") \

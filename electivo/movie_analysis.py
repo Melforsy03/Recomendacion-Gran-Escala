@@ -3,8 +3,31 @@ from pyspark.sql.functions import *
 import os
 import subprocess
 
-print("📊 INICIANDO MOVIES ANALYSIS (MODO YARN)")
+# SILENCIAR TODOS LOS LOGS DE SPARK
+os.environ['PYSPARK_PYTHON'] = 'python3'
+os.environ['PYSPARK_DRIVER_PYTHON'] = 'python3'
+os.environ['SPARK_LOCAL_IP'] = '127.0.0.1'
 
+# Configurar Spark para ser SILENCIOSO
+spark = SparkSession.builder \
+    .appName("MoviesAnalysis") \
+    .master("local[*]") \
+    .config("spark.ui.enabled", "false") \
+    .config("spark.driver.bindAddress", "127.0.0.1") \
+    .config("spark.driver.host", "127.0.0.1") \
+    .config("spark.sql.warehouse.dir", "/tmp/spark-warehouse") \
+    .getOrCreate()
+
+# SILENCIAR LOGS
+spark.sparkContext.setLogLevel("ERROR")
+sc = spark.sparkContext
+sc.setLogLevel("ERROR")
+
+def main():
+    print("=" * 50)
+    print("          MOVIES ANALYSIS - MODO LOCAL")
+    print("=" * 50)
+    
 # Configurar Spark para YARN
 spark = SparkSession.builder \
     .appName("MoviesAnalysisYARN") \

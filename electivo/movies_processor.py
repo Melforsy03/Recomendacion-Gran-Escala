@@ -1,8 +1,36 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
+import os
+
+# SILENCIAR TODOS LOS LOGS DE SPARK
+os.environ['PYSPARK_PYTHON'] = 'python3'
+os.environ['PYSPARK_DRIVER_PYTHON'] = 'python3'
+os.environ['SPARK_LOCAL_IP'] = '127.0.0.1'
 
 print("🔄 MOVIES PROCESSOR CON YARN")
 
+# Configurar Spark para ser SILENCIOSO
+spark = SparkSession.builder \
+    .appName("MoviesProcessorYARN") \
+    .master("yarn") \
+    .config("spark.sql.adaptive.enabled", "true") \
+    .config("spark.executor.memory", "512m") \
+    .config("spark.ui.enabled", "false") \
+    .config("spark.driver.bindAddress", "127.0.0.1") \
+    .config("spark.driver.host", "127.0.0.1") \
+    .config("spark.sql.warehouse.dir", "/tmp/spark-warehouse") \
+    .getOrCreate()
+
+# SILENCIAR LOGS
+spark.sparkContext.setLogLevel("ERROR")
+sc = spark.sparkContext
+sc.setLogLevel("ERROR")
+
+def main():
+    print("=" * 50)
+    print("       MOVIES PROCESSOR - YARN")
+    print("=" * 50)
+    
 # Configurar Spark para YARN
 spark = SparkSession.builder \
     .appName("MoviesProcessorYARN") \

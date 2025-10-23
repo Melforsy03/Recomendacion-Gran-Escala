@@ -5,11 +5,11 @@ services:
     container_name: movies-project
     hostname: localhost
     ports:
-      - "9870:9870"   # HDFS NameNode
-      - "8088:8088"   # YARN ResourceManager
-      - "8042:8042"   # YARN NodeManager
-      - "9864:9864"   # HDFS DataNode
-      - "4040:4040"   # Spark UI
+      - "9870:9870"
+      - "8088:8088"
+      - "8042:8042"
+      - "9864:9864"
+      - "4040:4040"
     volumes:
       - ./data:/app/data
       - ./scripts:/app/scripts
