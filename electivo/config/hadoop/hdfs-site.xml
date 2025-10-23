@@ -3,4 +3,24 @@
     <name>dfs.replication</name>
     <value>1</value>
   </property>
+
+  <property>
+    <name>dfs.namenode.name.dir</name>
+    <value>file:///opt/hadoop_data/nn</value>
+  </property>
+
+  <property>
+    <name>dfs.datanode.data.dir</name>
+    <value>file:///opt/hadoop_data/dn</value>
+  </property>
+
+  <!-- Facilita entorno 1-nodo -->
+  <property>
+    <name>dfs.permissions</name>
+    <value>false</value>
+  </property>
+  <property>
+    <name>dfs.safemode.threshold.pct</name>
+    <value>0.0</value>
+  </property>
 </configuration>
