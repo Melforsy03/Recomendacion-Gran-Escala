@@ -1,5 +1,85 @@
-
+# 🎬 Sistema de Recomendación de Películas a Gran Escala
 
 ## 📋 Descripción
 
-Sistema de recomendación que simula el procesamiento de **millones de interacciones de usuarios** usando una arquitectura de Big Data en tiempo real. Incluye generación de datos, streaming con Kafka, procesamiento de métricas y visualización interactiva.
+Sistema inteligente de recomendación de películas diseñado para procesar y analizar millones de valoraciones de usuarios en tiempo real. El proyecto utiliza el reconocido dataset **MovieLens 20M** para ofrecer recomendaciones personalizadas basadas en los gustos y preferencias de los usuarios.
+
+## 🎯 ¿Qué hace este sistema?
+
+- **Recomienda películas** personalizadas a cada usuario basándose en su historial de valoraciones y las preferencias de usuarios similares
+- **Procesa datos en tiempo real** para actualizar las recomendaciones instantáneamente cuando un usuario califica una nueva película
+- **Analiza tendencias** para identificar las películas más populares y las preferencias por género
+- **Visualiza métricas** a través de un dashboard interactivo que muestra estadísticas en vivo
+
+## 📊 Dataset
+
+El sistema trabaja con aproximadamente **32 millones de registros** que incluyen:
+
+- 🎥 ~27,000 películas con información de géneros
+- ⭐ ~20 millones de valoraciones de usuarios
+- 🏷️ ~465,000 etiquetas descriptivas
+- 🧬 ~11.7 millones de puntuaciones de similitud entre películas
+
+## ✨ Características Principales
+
+| Característica | Descripción |
+|----------------|-------------|
+| **Recomendaciones Personalizadas** | Sugiere películas basándose en tus gustos y los de usuarios similares |
+| **Procesamiento en Tiempo Real** | Las recomendaciones se actualizan instantáneamente |
+| **Dashboard Interactivo** | Visualiza métricas y estadísticas del sistema en vivo |
+| **API REST** | Accede a las recomendaciones desde cualquier aplicación |
+| **Escalabilidad** | Diseñado para manejar millones de usuarios y valoraciones |
+
+## 🌐 Interfaces Disponibles
+
+Una vez iniciado el sistema, puedes acceder a:
+
+| Interfaz | URL | Descripción |
+|----------|-----|-------------|
+| Dashboard | http://localhost:8501 | Panel de control con métricas en tiempo real |
+| API | http://localhost:8000 | Endpoints para obtener recomendaciones |
+| Monitoreo Spark | http://localhost:8080 | Estado del procesamiento |
+| Monitoreo Almacenamiento | http://localhost:9870 | Estado del sistema de archivos |
+
+## 🚀 Inicio Rápido
+
+```bash
+# 1. Iniciar todos los servicios
+./scripts/start-system.sh
+
+# 2. Verificar que todo funciona
+./scripts/check_system_status.sh
+
+# 3. Abrir el dashboard en tu navegador
+# http://localhost:8501
+```
+
+## 📁 Estructura del Proyecto
+
+```
+📦 Recomendacion-Gran-Escala
+├── 📂 Dataset/          → Datos de MovieLens (películas, valoraciones, etiquetas)
+├── 📂 movies/           → Código principal del sistema
+│   ├── 📂 api/          → Servicio de recomendaciones (REST API)
+│   ├── 📂 dashboard/    → Panel de visualización de métricas
+│   └── 📂 src/          → Lógica de procesamiento y modelos
+├── 📂 scripts/          → Scripts de gestión y despliegue
+├── 📂 docs/             → Documentación detallada
+└── 📂 tests/            → Pruebas del sistema
+```
+
+## 📚 Documentación
+
+Para más información, consulta:
+
+- **[Documentación Técnica](docs/DOCUMENTACION.md)** - Detalles de arquitectura y componentes
+- **[Guía de Primer Despliegue](docs/GUIA_DESPLIEGUE_INICIAL_UNICO.md)** - Configuración inicial paso a paso
+- **[Guía de Uso Regular](docs/GUIA_DESPLIEGUE_REGULAR.md)** - Operación diaria del sistema
+
+## 🤝 Contribuciones
+
+Este es un proyecto educativo para sistemas de recomendación a gran escala. ¡Las contribuciones son bienvenidas!
+
+## 📄 Licencia
+
+Este proyecto es de código abierto bajo la licencia MIT.
