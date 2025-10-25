@@ -1,0 +1,26 @@
+///arrancar kafka
+cd ~/Escritorio/Big-Data/electivo/scripts
+./start_kafka_local.sh
+
+//levantar el contenedor 
+docker compose up -d
+
+//comprobar que mi contenedor ve kafka 
+docker exec -it movies-project ping host.docker.internal
+
+//enviar datos del producer 
+docker exec -it movies-project python3 /app/scripts/movies_producer_kafka.py
+
+//procesar el stream en spark 
+docker exec -it movies-project python3 /app/scripts/spark_kafka_to_hdfs.py
+
+////matar procesos 
+pkill -f kafka.Kafka
+pkill -f zookeeper
+
+//entrar al contenedor 
+docker exec -it movies-project bash
+
+///borrar el historial del dataset
+hdfs dfs -rm -r -f /user/movies/bronze/movies
+

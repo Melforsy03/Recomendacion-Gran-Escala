@@ -92,10 +92,5 @@ echo ""
 echo "📍 URLs de monitoreo:"
 echo "   HDFS Web UI: http://localhost:9870"
 echo "   YARN Web UI: http://localhost:8088"
-echo ""
-echo "📊 Archivos en HDFS:"
-hdfs dfs -ls -R /user/movies
 
-echo ""
-echo "🐳 Contenedor activo. Presiona Ctrl+C para detener."
 tail -f /dev/null
