@@ -143,6 +143,11 @@ stats/
 *.fdb_latexmk
 
 electivo/spark_env
+<<<<<<< HEAD
 
 eda/
 shared
+=======
+electivo
+eda
+>>>>>>> 80056d5 (feat: Actualizar .gitignore y docker-compose para incluir caché de Ivy y optimizar pruebas de integración de Spark con Kafka)

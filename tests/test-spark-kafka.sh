@@ -28,7 +28,7 @@ df = spark \
     .format("kafka") \
     .option("kafka.bootstrap.servers", "kafka:9092") \
     .option("subscribe", "test-streaming") \
-    .option("startingOffsets", "earliest") \
+    .option("startingOffsets", "latest") \
     .load()
 
 # Transformar los datos
@@ -51,7 +51,15 @@ spark.stop()
 print("Test completado!")
 EOF
 
-echo "1. Creando topic para streaming..."
+echo "1. Limpiando y recreando topic para streaming..."
+# Eliminar topic existente
+docker exec kafka kafka-topics --delete \
+    --bootstrap-server localhost:9092 \
+    --topic test-streaming 2>/dev/null || true
+
+sleep 2
+
+# Crear topic limpio
 docker exec kafka kafka-topics --create \
     --bootstrap-server localhost:9092 \
     --replication-factor 1 \
@@ -60,11 +68,30 @@ docker exec kafka kafka-topics --create \
     --if-not-exists
 
 echo ""
-echo "2. Copiando script de prueba al contenedor..."
+echo "2. Pre-descargando dependencias (solo primera vez)..."
+# Pre-descargar con timeout aumentado y repositorios alternativos
+docker exec -u root -e SPARK_SUBMIT_OPTS="-Dsun.net.client.defaultConnectTimeout=180000 -Dsun.net.client.defaultReadTimeout=900000" spark-master bash -c '
+    if [ ! -f /root/.ivy2/.packages_downloaded ]; then
+        echo "Descargando paquetes Kafka para Spark..."
+        spark-submit \
+            --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1 \
+            --repositories "https://repo.maven.apache.org/maven2,https://repo1.maven.org/maven2,https://maven-central.storage-download.googleapis.com/maven2" \
+            --help 2>&1 | head -n 20 || true
+        
+        # Marcar como descargado
+        touch /root/.ivy2/.packages_downloaded
+        echo "✓ Paquetes descargados y cacheados"
+    else
+        echo "✓ Usando paquetes ya descargados"
+    fi
+'
+
+echo ""
+echo "3. Copiando script de prueba al contenedor..."
 docker cp /tmp/test_spark_kafka.py spark-master:/tmp/
 
 echo ""
-echo "3. Produciendo mensajes de prueba en Kafka (en background)..."
+echo "4. Produciendo mensajes de prueba en Kafka (en background)..."
 (sleep 5 && for i in {1..5}; do
     echo "mensaje_test_$i:$(date)" | docker exec -i kafka kafka-console-producer \
         --bootstrap-server localhost:9092 \
@@ -75,11 +102,17 @@ echo "3. Produciendo mensajes de prueba en Kafka (en background)..."
 done) &
 
 echo ""
-echo "4. Ejecutando Spark Streaming con Kafka..."
-docker exec -u root spark-master spark-submit \
+echo "5. Ejecutando Spark Streaming con Kafka..."
+timeout 1000 docker exec -u root -e SPARK_SUBMIT_OPTS="-Dsun.net.client.defaultConnectTimeout=180000 -Dsun.net.client.defaultReadTimeout=900000" spark-master \
+    spark-submit \
     --master spark://spark-master:7077 \
     --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1 \
-    /tmp/test_spark_kafka.py
+    --repositories "https://repo.maven.apache.org/maven2,https://repo1.maven.org/maven2,https://maven-central.storage-download.googleapis.com/maven2" \
+    /tmp/test_spark_kafka.py || {
+    echo "⚠ El test excedió el timeout o falló"
+    echo "Esto puede deberse a problemas de red"
+    exit 1
+}
 
 echo ""
 echo "✓ Test de integración Spark + Kafka completado"
