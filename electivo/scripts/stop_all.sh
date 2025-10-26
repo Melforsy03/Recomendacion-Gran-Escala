@@ -15,4 +15,4 @@ docker exec -it movies-project bash -c "/opt/hadoop/sbin/stop-yarn.sh && /opt/ha
 # Limpiar logs temporales
 rm -rf /tmp/kafka-logs /tmp/zookeeper
 
-echo "✅ Todo detenido correctamente."
+echo "✅ Todo detenido correctamente"

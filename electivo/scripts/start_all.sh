@@ -1,77 +1,126 @@
 #!/bin/bash
 # =====================================================
-# 🎬 START ALL - Big Data Movies Pipeline (Docker + Host)
-# Kafka (host) → Producer (Docker) → Spark Streaming → HDFS
+# 🎬 START FINAL - Con JAVA_HOME corregido
 # =====================================================
 
 set -e
 
-# ======== CONFIG ========
-KAFKA_HOME="$HOME/Escritorio/Big-Data/electivo/kafka_2.13-2.8.1"
-TOPIC_NAME="movies"
-BROKER="172.17.0.1:9092"
-CONTAINER_NAME="movies-project"
-SPARK_SCRIPT="/app/scripts/spark_kafka_to_hdfs.py"
-PRODUCER_SCRIPT="/app/scripts/movies_producer_kafka.py"
-HDFS_CHECK_DIR="/user/movies/bronze/movies"
-
 echo "=========================================="
-echo "🚀 INICIANDO PIPELINE BIG DATA MOVIES"
+echo "🚀 INICIANDO PIPELINE - JAVA_HOME CORREGIDO"
 echo "=========================================="
-sleep 1
 
-# ======== 1️⃣ ZOOKEEPER + KAFKA ========
-echo "🦓 Iniciando Zookeeper..."
-nohup $KAFKA_HOME/bin/zookeeper-server-start.sh $KAFKA_HOME/config/zookeeper.properties > /tmp/zookeeper.log 2>&1 &
+# ======== CONFIGURACIÓN CORRECTA DE JAVA ========
+# 🔥 CORREGIR JAVA_HOME - Buscar la ruta correcta
+export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
+echo "✅ JAVA_HOME configurado: $JAVA_HOME"
+
+export HADOOP_HOME=/opt/hadoop
+export SPARK_HOME=/opt/spark
+export PATH=$JAVA_HOME/bin:$HADOOP_HOME/bin:$HADOOP_HOME/sbin:$SPARK_HOME/bin:$PATH
+
+# Configurar Hadoop para usar el Java correcto
+echo "export JAVA_HOME=$JAVA_HOME" > $HADOOP_HOME/etc/hadoop/hadoop-env.sh
+
+# ======== 1️⃣ Iniciar HDFS manualmente ========
+echo "💾 Iniciando HDFS manualmente..."
+
+# Crear directorios de datos
+mkdir -p /opt/hadoop_data/nn /opt/hadoop_data/dn
+
+# Formatear NameNode si es necesario
+echo "📋 Formateando NameNode..."
+hdfs namenode -format -force
+
+# Iniciar servicios Hadoop manualmente
+echo "🚀 Iniciando servicios Hadoop manualmente..."
+hdfs --daemon start namenode
+sleep 3
+hdfs --daemon start datanode  
+sleep 3
+hdfs --daemon start secondarynamenode
+sleep 3
+yarn --daemon start resourcemanager
+sleep 3
+yarn --daemon start nodemanager
 sleep 5
 
-echo "☕ Iniciando Kafka Broker..."
-nohup $KAFKA_HOME/bin/kafka-server-start.sh $KAFKA_HOME/config/server.properties > /tmp/kafka.log 2>&1 &
-sleep 8
+# Esperar a HDFS
+echo "🕒 Esperando HDFS..."
+for i in {1..20}; do
+    if hdfs dfsadmin -report 2>/dev/null | grep -q "Live datanodes"; then
+        echo "✅ HDFS listo"
+        break
+    fi
+    echo "⏳ Intento $i/20..."
+    sleep 2
+done
 
-# ======== 2️⃣ Crear topic si no existe ========
-echo "📦 Verificando tópico '$TOPIC_NAME'..."
-$KAFKA_HOME/bin/kafka-topics.sh --bootstrap-server $BROKER --list | grep -q "$TOPIC_NAME"
-if [ $? -ne 0 ]; then
-  echo "🆕 Creando tópico $TOPIC_NAME..."
-  $KAFKA_HOME/bin/kafka-topics.sh --create \
-      --topic "$TOPIC_NAME" \
-      --bootstrap-server $BROKER \
-      --partitions 1 --replication-factor 1
-else
-  echo "✅ El tópico '$TOPIC_NAME' ya existe."
-fi
+# Crear directorios en HDFS
+echo "📁 Creando directorios HDFS..."
+hdfs dfs -mkdir -p /user/movies/bronze 2>/dev/null || true
+hdfs dfs -mkdir -p /user/movies/checkpoints 2>/dev/null || true
 
-# ======== 3️⃣ Verificar que el contenedor esté corriendo ========
-if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-  echo "⚠️ El contenedor '$CONTAINER_NAME' no está corriendo. Levántalo primero:"
-  echo "   docker start $CONTAINER_NAME"
-  exit 1
-fi
-
-# ======== 4️⃣ Iniciar HDFS y YARN dentro del contenedor ========
-echo "💾 Iniciando HDFS y YARN dentro de Docker..."
-docker exec -d $CONTAINER_NAME bash -c "/opt/hadoop/sbin/start-dfs.sh && /opt/hadoop/sbin/start-yarn.sh"
+# ======== 2️⃣ Iniciar Kafka ========
+echo "🔧 Iniciando Kafka..."
+/app/scripts/start_kafka_local.sh
 sleep 10
 
-# ======== 5️⃣ Ejecutar productor Kafka ========
-echo "🎥 Ejecutando productor Kafka..."
-docker exec -d $CONTAINER_NAME python3 $PRODUCER_SCRIPT
-sleep 3
+# ======== 3️⃣ Verificar servicios ========
+echo "🔍 Verificando servicios..."
+echo "--- Java Version ---"
+java -version
+echo "--- Procesos Java ---"
+jps
+echo "--- HDFS ---"
+hdfs dfsadmin -report 2>/dev/null | head -3 || echo "HDFS iniciando..."
 
-# ======== 6️⃣ Ejecutar Spark Streaming ========
+# ======== 4️⃣ Iniciar Spark Streaming ========
 echo "💎 Iniciando Spark Streaming..."
-docker exec -d $CONTAINER_NAME python3 $SPARK_SCRIPT
-sleep 10
+spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1 /app/scripts/spark_kafka_to_hdfs.py &
+SPARK_PID=$!
+echo "Spark PID: $SPARK_PID"
+sleep 20
 
-# ======== 7️⃣ Verificar salida en HDFS ========
-echo "🔍 Verificando archivos en HDFS..."
-docker exec $CONTAINER_NAME hdfs dfs -ls $HDFS_CHECK_DIR || echo "⚠️ Aún no hay archivos en HDFS (espera unos segundos...)"
+# ======== 5️⃣ Ejecutar Productor ========
+echo "🎥 Ejecutando productor Kafka..."
+python3 /app/scripts/movies_producer_kafka.py &
+PRODUCER_PID=$!
+echo "Producer PID: $PRODUCER_PID"
+sleep 5
 
 echo "=========================================="
-echo "✅ TODO LEVANTADO CON ÉXITO"
-echo "Kafka UI: localhost:9092"
-echo "YARN UI : http://localhost:8088"
-echo "HDFS UI : http://localhost:9870"
+echo "✅ PIPELINE INICIADO"
+echo "HDFS: http://localhost:9870"
+echo "YARN: http://localhost:8088" 
+echo "Spark: http://localhost:4040"
 echo "=========================================="
-echo "📜 Logs: /tmp/kafka.log, /tmp/zookeeper.log"
+
+# ======== 6️⃣ Mantener contenedor vivo ========
+cleanup() {
+    echo "🛑 Deteniendo servicios..."
+    kill $SPARK_PID $PRODUCER_PID 2>/dev/null || true
+    /opt/kafka_2.13-2.8.1/bin/kafka-server-stop.sh 2>/dev/null || true
+    /opt/kafka_2.13-2.8.1/bin/zookeeper-server-stop.sh 2>/dev/null || true
+    
+    # Detener Hadoop manualmente
+    yarn --daemon stop nodemanager 2>/dev/null || true
+    yarn --daemon stop resourcemanager 2>/dev/null || true
+    hdfs --daemon stop secondarynamenode 2>/dev/null || true
+    hdfs --daemon stop datanode 2>/dev/null || true
+    hdfs --daemon stop namenode 2>/dev/null || true
+    
+    exit 0
+}
+
+trap cleanup SIGINT SIGTERM
+
+# Monitoreo
+echo "📊 Iniciando monitoreo..."
+while true; do
+    echo "--- Estado $(date) ---"
+    echo "HDFS: $(hdfs dfsadmin -report 2>/dev/null | grep 'Live datanodes' | head -1 || echo 'Verificando...')"
+    echo "Kafka: $(netstat -tln | grep -q ':9092' && echo '✅ Activo' || echo '❌ Inactivo')"
+    echo "Spark: $(kill -0 $SPARK_PID 2>/dev/null && echo '✅ Activo' || echo '❌ Detenido')"
+    
+    sleep 30
+done

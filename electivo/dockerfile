@@ -22,10 +22,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3-pip \
       openjdk-11-jdk-headless \
       curl wget tar procps ca-certificates \
+      # 🔥 AGREGAR SSH
+      openssh-server openssh-client \
+      sudo \
     && rm -rf /var/lib/apt/lists/*
 
 # JAVA_HOME (ruta típica en Debian/Ubuntu)
 ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+
+# ========== CONFIGURACIÓN SSH ==========
+# Configurar SSH sin contraseña para Hadoop
+RUN mkdir -p /var/run/sshd && \
+    ssh-keygen -t rsa -P '' -f ~/.ssh/id_rsa && \
+    cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys && \
+    chmod 0600 ~/.ssh/authorized_keys
+
+# Configurar SSH para localhost sin verificación
+RUN echo "Host localhost" >> ~/.ssh/config && \
+    echo "  StrictHostKeyChecking no" >> ~/.ssh/config && \
+    echo "  UserKnownHostsFile /dev/null" >> ~/.ssh/config
+
+# Configurar acceso SSH sin contraseña para root
+RUN echo 'root:root' | chpasswd && \
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
 
 # ========== Dependencias Python ==========
 COPY requirements.txt /tmp/requirements.txt
@@ -34,13 +54,13 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # ========== Instalar Hadoop (desde carpeta local) ==========
 WORKDIR /opt
 
-# Copiar tu Hadoop descomprimido localmente (la carpeta debe estar junto al Dockerfile)
+# Copiar tu Hadoop descomprimido localmente
 COPY hadoop-3.3.1 /opt/hadoop-3.3.1
 
 # Crear enlace simbólico /opt/hadoop → /opt/hadoop-3.3.1
 RUN ln -s /opt/hadoop-3.3.1 /opt/hadoop
 
-# Crear directorio de configuración (por si no existe)
+# Crear directorio de configuración
 RUN mkdir -p "${HADOOP_CONF_DIR}"
 
 # Evitar warnings en modo pseudo-distribuido
@@ -69,8 +89,8 @@ COPY . /app
 
 RUN sh -c 'chmod +x /app/scripts/*.sh' || true
 
-# Puertos web útiles
-EXPOSE 9870 9864 8088 8042 4040
+# Puertos web útiles + SSH
+EXPOSE 9870 9864 8088 8042 4040 9092 2181 22
 
-# Por defecto: arranca HDFS + YARN y mantiene contenedor vivo
-CMD ["/app/scripts/start_hadoop_yarn.sh"]
+# Por defecto: arranca SSH + HDFS + YARN y mantiene contenedor vivo
+CMD service ssh start && /app/scripts/start_all.sh
