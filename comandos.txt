@@ -1,2 +1,2 @@
 docker rm -f movies-project
-docker run -d   --name movies-project   -p 9870:9870   -p 8088:8088   -p 8042:8042   -p 9864:9864   -p 4040:4040   -v $(pwd)/data:/app/data   -v $(pwd)/scripts:/app/scripts   -v $(pwd)/config:/app/config   -v $(pwd)/kafka_2.13-2.8.1:/opt/kafka_2.13-2.8.1   movies-spark-hadoop:local   /bin/bash -c "/app/scripts/start_all.sh"
+docker run -d   --name movies-project   -p 9870:9870   -p 8088:8088   -p 8042:8042   -p 9864:9864   -p 4040:4040  -p 8050:8050  -v $(pwd)/data:/app/data   -v $(pwd)/scripts:/app/scripts   -v $(pwd)/config:/app/config   -v $(pwd)/kafka_2.13-2.8.1:/opt/kafka_2.13-2.8.1   movies-spark-hadoop:local   /bin/bash -c "/app/scripts/start_all.sh"

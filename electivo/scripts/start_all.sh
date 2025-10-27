@@ -1,126 +1,128 @@
 #!/bin/bash
-# =====================================================
-# 🎬 START FINAL - Con JAVA_HOME corregido
-# =====================================================
-
 set -e
 
-echo "=========================================="
-echo "🚀 INICIANDO PIPELINE - JAVA_HOME CORREGIDO"
-echo "=========================================="
-
-# ======== CONFIGURACIÓN CORRECTA DE JAVA ========
-# 🔥 CORREGIR JAVA_HOME - Buscar la ruta correcta
-export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
-echo "✅ JAVA_HOME configurado: $JAVA_HOME"
-
+# ======================================================
+# 🔧 CONFIGURACIÓN DE ENTORNO
+# ======================================================
+export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+export PATH=$JAVA_HOME/bin:$PATH
+export KAFKA_HOME=/app/kafka_2.13-2.8.1
+export PATH=$KAFKA_HOME/bin:$PATH
 export HADOOP_HOME=/opt/hadoop
-export SPARK_HOME=/opt/spark
-export PATH=$JAVA_HOME/bin:$HADOOP_HOME/bin:$HADOOP_HOME/sbin:$SPARK_HOME/bin:$PATH
+export PATH=$HADOOP_HOME/bin:$HADOOP_HOME/sbin:$PATH
+# Verificar si el JAR ya existe
+if [ ! -f "/opt/spark/jars/commons-pool2-2.11.1.jar" ]; then
+    echo "📥 Descargando commons-pool2..."
+    wget -O /tmp/commons-pool2-2.11.1.jar \
+        https://repo1.maven.org/maven2/org/apache/commons/commons-pool2/2.11.1/commons-pool2-2.11.1.jar
+    
+    # Mover al directorio de Spark
+    mv /tmp/commons-pool2-2.11.1.jar /opt/spark/jars/
+    echo "✅ commons-pool2 instalado en /opt/spark/jars/"
+else
+    echo "✅ commons-pool2 ya está instalado"
+fi
 
-# Configurar Hadoop para usar el Java correcto
-echo "export JAVA_HOME=$JAVA_HOME" > $HADOOP_HOME/etc/hadoop/hadoop-env.sh
-
-# ======== 1️⃣ Iniciar HDFS manualmente ========
-echo "💾 Iniciando HDFS manualmente..."
-
-# Crear directorios de datos
-mkdir -p /opt/hadoop_data/nn /opt/hadoop_data/dn
-
-# Formatear NameNode si es necesario
-echo "📋 Formateando NameNode..."
-hdfs namenode -format -force
-
-# Iniciar servicios Hadoop manualmente
-echo "🚀 Iniciando servicios Hadoop manualmente..."
-hdfs --daemon start namenode
-sleep 3
-hdfs --daemon start datanode  
-sleep 3
-hdfs --daemon start secondarynamenode
-sleep 3
-yarn --daemon start resourcemanager
-sleep 3
-yarn --daemon start nodemanager
-sleep 5
-
-# Esperar a HDFS
+# Verificar la instalación
+if [ -f "/opt/spark/jars/commons-pool2-2.11.1.jar" ]; then
+    echo "🎯 commons-pool2 verificado correctamente"
+else
+    echo "❌ Error instalando commons-pool2"
+    exit 1
+fi
 echo "🕒 Esperando HDFS..."
-for i in {1..20}; do
-    if hdfs dfsadmin -report 2>/dev/null | grep -q "Live datanodes"; then
-        echo "✅ HDFS listo"
-        break
-    fi
-    echo "⏳ Intento $i/20..."
-    sleep 2
-done
+sleep 8
 
-# Crear directorios en HDFS
+echo "📂 Verificando si el NameNode está formateado..."
+if [ ! -d "/opt/hadoop/dfs/name" ] || [ -z "$(ls -A /opt/hadoop/dfs/name 2>/dev/null)" ]; then
+  echo "⚙️ Formateando NameNode..."
+  hdfs namenode -format -force
+else
+  echo "✅ NameNode ya formateado."
+fi
+
+echo "🚀 Iniciando HDFS sin SSH..."
+$HADOOP_HOME/bin/hdfs --daemon start namenode
+$HADOOP_HOME/bin/hdfs --daemon start datanode
+$HADOOP_HOME/bin/hdfs --daemon start secondarynamenode
+$HADOOP_HOME/bin/yarn --daemon start resourcemanager
+$HADOOP_HOME/bin/yarn --daemon start nodemanager
+
 echo "📁 Creando directorios HDFS..."
-hdfs dfs -mkdir -p /user/movies/bronze 2>/dev/null || true
-hdfs dfs -mkdir -p /user/movies/checkpoints 2>/dev/null || true
+hdfs dfs -mkdir -p /user/movies/bronze/movies || true
+hdfs dfs -mkdir -p /user/movies/checkpoints || true
+hdfs dfs -mkdir -p /tmp || true
+echo "✅ HDFS listo"
 
-# ======== 2️⃣ Iniciar Kafka ========
+# ======================================================
+# ⚡ KAFKA
+# ======================================================
 echo "🔧 Iniciando Kafka..."
-/app/scripts/start_kafka_local.sh
+$KAFKA_HOME/bin/zookeeper-server-start.sh -daemon $KAFKA_HOME/config/zookeeper.properties
+sleep 5
+$KAFKA_HOME/bin/kafka-server-start.sh -daemon $KAFKA_HOME/config/server.properties
 sleep 10
 
-# ======== 3️⃣ Verificar servicios ========
-echo "🔍 Verificando servicios..."
-echo "--- Java Version ---"
-java -version
-echo "--- Procesos Java ---"
-jps
-echo "--- HDFS ---"
-hdfs dfsadmin -report 2>/dev/null | head -3 || echo "HDFS iniciando..."
+echo "📦 Asegurando tópico 'movies'..."
+$KAFKA_HOME/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list | grep -q "^movies$" || \
+  $KAFKA_HOME/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --topic movies --partitions 1 --replication-factor 1
 
-# ======== 4️⃣ Iniciar Spark Streaming ========
-echo "💎 Iniciando Spark Streaming..."
-spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1 /app/scripts/spark_kafka_to_hdfs.py &
-SPARK_PID=$!
-echo "Spark PID: $SPARK_PID"
+echo "🎬 Kafka operativo"
+
+# ======================================================
+# 🎥 PRODUCTOR (INICIAR PRIMERO Y ESPERAR)
+# ======================================================
+echo "🎥 Ejecutando productor Kafka en BACKGROUND..."
+python3 /app/scripts/movies_producer_kafka.py &
+
+echo "🕒 Esperando a que el productor cargue datos..."
+sleep 30  # Dar tiempo al producer para cargar datasets
+
+# ======================================================
+# 🥉 SPARK BRONZE
+# ======================================================
+echo "🥉 Iniciando Spark Streaming BRONZE..."
+/opt/spark/bin/spark-submit /app/scripts/spark_kafka_to_hdfs.py &
+
+echo "🕒 Esperando a que BRONZE procese datos iniciales..."
+sleep 45
+
+# ======================================================
+# 💎 SPARK GOLD
+# ======================================================
+echo "💎 Iniciando Spark Streaming GOLD..."
+/opt/spark/bin/spark-submit /app/scripts/spark_streaming_gold.py &
+
+echo "🕒 Esperando a que GOLD se inicialice..."
 sleep 20
 
-# ======== 5️⃣ Ejecutar Productor ========
-echo "🎥 Ejecutando productor Kafka..."
-python3 /app/scripts/movies_producer_kafka.py &
-PRODUCER_PID=$!
-echo "Producer PID: $PRODUCER_PID"
-sleep 5
+# ======================================================
+# 📊 DASHBOARD
+# ======================================================
+echo "📊 Iniciando Dashboard..."
+python3 /app/scripts/dashboard.py &
 
-echo "=========================================="
-echo "✅ PIPELINE INICIADO"
-echo "HDFS: http://localhost:9870"
-echo "YARN: http://localhost:8088" 
-echo "Spark: http://localhost:4040"
-echo "=========================================="
+# ======================================================
+# ✅ ESTADO FINAL
+# ======================================================
+echo "==========================================="
+echo "✅ PIPELINE COMPLETO EN EJECUCIÓN"
+echo "HDFS UI:   http://localhost:9870"
+echo "YARN UI:   http://localhost:8088"
+echo "Spark UI:  http://localhost:4040"
+echo "Dashboard: http://localhost:8050"
+echo "==========================================="
 
-# ======== 6️⃣ Mantener contenedor vivo ========
-cleanup() {
-    echo "🛑 Deteniendo servicios..."
-    kill $SPARK_PID $PRODUCER_PID 2>/dev/null || true
-    /opt/kafka_2.13-2.8.1/bin/kafka-server-stop.sh 2>/dev/null || true
-    /opt/kafka_2.13-2.8.1/bin/zookeeper-server-stop.sh 2>/dev/null || true
-    
-    # Detener Hadoop manualmente
-    yarn --daemon stop nodemanager 2>/dev/null || true
-    yarn --daemon stop resourcemanager 2>/dev/null || true
-    hdfs --daemon stop secondarynamenode 2>/dev/null || true
-    hdfs --daemon stop datanode 2>/dev/null || true
-    hdfs --daemon stop namenode 2>/dev/null || true
-    
-    exit 0
-}
+# Verificar que los datos están fluyendo
+echo "🔍 Verificando flujo de datos..."
+sleep 10
 
-trap cleanup SIGINT SIGTERM
+# Verificar datos en Kafka
+echo "📊 Verificando datos en Kafka..."
+timeout 10s $KAFKA_HOME/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic movies --max-messages 3 --timeout-ms 5000 || echo "⚠️ Esperando datos en Kafka..."
 
-# Monitoreo
-echo "📊 Iniciando monitoreo..."
-while true; do
-    echo "--- Estado $(date) ---"
-    echo "HDFS: $(hdfs dfsadmin -report 2>/dev/null | grep 'Live datanodes' | head -1 || echo 'Verificando...')"
-    echo "Kafka: $(netstat -tln | grep -q ':9092' && echo '✅ Activo' || echo '❌ Inactivo')"
-    echo "Spark: $(kill -0 $SPARK_PID 2>/dev/null && echo '✅ Activo' || echo '❌ Detenido')"
-    
-    sleep 30
-done
+# Verificar datos en HDFS
+echo "📁 Verificando datos en HDFS..."
+hdfs dfs -ls /user/movies/bronze/movies || echo "⚠️ Esperando datos en HDFS..."
+
+tail -f /dev/null

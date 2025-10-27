@@ -22,7 +22,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3-pip \
       openjdk-11-jdk-headless \
       curl wget tar procps ca-certificates \
-      # 🔥 AGREGAR SSH
       openssh-server openssh-client \
       sudo \
     && rm -rf /var/lib/apt/lists/*
@@ -49,7 +48,8 @@ RUN echo 'root:root' | chpasswd && \
 
 # ========== Dependencias Python ==========
 COPY requirements.txt /tmp/requirements.txt
-RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt
+RUN pip install dash plotly kafka-python
 
 # ========== Instalar Hadoop (desde carpeta local) ==========
 WORKDIR /opt
@@ -76,7 +76,7 @@ COPY config/hadoop/hdfs-site.xml     "${HADOOP_CONF_DIR}/hdfs-site.xml"
 COPY config/hadoop/yarn-site.xml     "${HADOOP_CONF_DIR}/yarn-site.xml"
 COPY config/hadoop/mapred-site.xml   "${HADOOP_CONF_DIR}/mapred-site.xml"
 COPY config/hadoop/workers           "${HADOOP_CONF_DIR}/workers"
-
+COPY films /app/films
 # Directorios de datos HDFS
 RUN mkdir -p /opt/hadoop_data/nn /opt/hadoop_data/dn
 
@@ -89,8 +89,19 @@ COPY . /app
 
 RUN sh -c 'chmod +x /app/scripts/*.sh' || true
 
-# Puertos web útiles + SSH
-EXPOSE 9870 9864 8088 8042 4040 9092 2181 22
+# Puertos web útiles 
+EXPOSE 9870 9864 8088 8042 4040 9092 2181 22 8050
+
+# --- Corregir JAVA_HOME en Hadoop ---
+RUN sed -i 's|/usr/lib/jvm/java-8-openjdk-amd64|/usr/lib/jvm/java-11-openjdk-amd64|g' /opt/hadoop/etc/hadoop/hadoop-env.sh
+ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+ENV PATH=$JAVA_HOME/bin:$PATH
+# --- Añadir conectores Kafka-Spark ---
+RUN wget https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.1/spark-sql-kafka-0-10_2.12-3.5.1.jar -P /opt/spark/jars/ && \
+    wget https://repo1.maven.org/maven2/org/apache/spark/spark-token-provider-kafka-0-10_2.12/3.5.1/spark-token-provider-kafka-0-10_2.12-3.5.1.jar -P /opt/spark/jars/ && \
+    wget https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.4.1/kafka-clients-3.4.1.jar -P /opt/spark/jars/ && \
+    wget https://repo1.maven.org/maven2/org/lz4/lz4-java/1.8.0/lz4-java-1.8.0.jar -P /opt/spark/jars/ && \
+    wget https://repo1.maven.org/maven2/org/xerial/snappy/snappy-java/1.1.10.3/snappy-java-1.1.10.3.jar -P /opt/spark/jars/
 
 # Por defecto: arranca SSH + HDFS + YARN y mantiene contenedor vivo
 CMD service ssh start && /app/scripts/start_all.sh
