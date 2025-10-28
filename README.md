@@ -1,15 +1,34 @@
 # Sistema de Recomendación en Gran Escala
 ## Arquitectura de Big Data con HDFS + YARN + Spark + Kafka
 
+[![Estado](https://img.shields.io/badge/Fase-3%20%7C%20ETL%20Completado-success)](docs/FASE3_RESUMEN.md)
+[![Datos](https://img.shields.io/badge/Datos-32.2M%20registros-blue)](docs/FASE2_RESUMEN.md)
+[![Parquet](https://img.shields.io/badge/Parquet-293%20MB-orange)](docs/FASE3_RESUMEN.md)
+
 ### 📋 Descripción del Sistema
 
-Este proyecto configura una infraestructura completa de Big Data que incluye:
+Sistema completo de recomendación de películas a gran escala usando el dataset **MovieLens 20M**, implementado con:
 
-- **HDFS (Hadoop Distributed File System)**: Sistema de archivos distribuido
-- **YARN (Yet Another Resource Negotiator)**: Gestor de recursos del cluster
-- **Apache Spark**: Motor de procesamiento distribuido (versión 3.4.1)
-- **Apache Kafka**: Plataforma de streaming distribuido (versión 3.5)
-- **Zookeeper**: Coordinación de servicios distribuidos
+- **Dataset**: 32.2M registros (20M ratings, 27K películas, 465K tags, 11.7M genome scores)
+- **Almacenamiento**: HDFS distribuido con formato Parquet optimizado (67% reducción vs CSV)
+- **Procesamiento**: Apache Spark 3.4.1 con ALS (collaborative filtering) + features de contenido
+- **Streaming**: Kafka para ratings sintéticos en tiempo real (miles/segundo)
+- **Orchestration**: Docker Compose con 9 servicios integrados
+
+### ✅ Estado del Proyecto
+
+| Fase | Estado | Descripción | Documentación |
+|------|--------|-------------|---------------|
+| **Fase 1** | ✅ COMPLETADA | Verificación infraestructura Docker | [FASE1_RESUMEN.md](docs/FASE1_RESUMEN.md) |
+| **Fase 2** | ✅ COMPLETADA | Carga de 885 MB CSV a HDFS | [FASE2_RESUMEN.md](docs/FASE2_RESUMEN.md) |
+| **Fase 3** | ✅ COMPLETADA | ETL a Parquet tipado (293 MB) | [FASE3_RESUMEN.md](docs/FASE3_RESUMEN.md) |
+| **Fase 4** | 🔄 PENDIENTE | Features de contenido (géneros, tags) | - |
+| **Fase 5** | 🔄 PENDIENTE | Entrenamiento modelo ALS | - |
+| **Fase 6** | 🔄 PENDIENTE | Evaluación y métricas | - |
+| **Fase 7** | 🔄 PENDIENTE | Producer Kafka (ratings sintéticos) | - |
+| **Fase 8** | 🔄 PENDIENTE | Streaming processor con métricas | - |
+| **Fase 9** | 🔄 PENDIENTE | Persistencia de streams en HDFS | - |
+| **Fase 10** | 🔄 PENDIENTE | Analytics batch sobre streams | - |
 
 ### 🏗️ Arquitectura
 
