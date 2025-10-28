@@ -1,10 +1,41 @@
 # 🎬 Sistema de Recomendación de Películas a Gran Escala
 
+<<<<<<< HEAD
 ## 📋 Descripción
 
 Sistema inteligente de recomendación de películas diseñado para procesar y analizar millones de valoraciones de usuarios en tiempo real. El proyecto utiliza el reconocido dataset **MovieLens 20M** para ofrecer recomendaciones personalizadas basadas en los gustos y preferencias de los usuarios.
 
 ## 🎯 ¿Qué hace este sistema?
+=======
+[![Estado](https://img.shields.io/badge/Fase-3%20%7C%20ETL%20Completado-success)](docs/FASE3_RESUMEN.md)
+[![Datos](https://img.shields.io/badge/Datos-32.2M%20registros-blue)](docs/FASE2_RESUMEN.md)
+[![Parquet](https://img.shields.io/badge/Parquet-293%20MB-orange)](docs/FASE3_RESUMEN.md)
+
+### 📋 Descripción del Sistema
+
+Sistema completo de recomendación de películas a gran escala usando el dataset **MovieLens 20M**, implementado con:
+
+- **Dataset**: 32.2M registros (20M ratings, 27K películas, 465K tags, 11.7M genome scores)
+- **Almacenamiento**: HDFS distribuido con formato Parquet optimizado (67% reducción vs CSV)
+- **Procesamiento**: Apache Spark 3.4.1 con ALS (collaborative filtering) + features de contenido
+- **Streaming**: Kafka para ratings sintéticos en tiempo real (miles/segundo)
+- **Orchestration**: Docker Compose con 9 servicios integrados
+
+### ✅ Estado del Proyecto
+
+| Fase | Estado | Descripción | Documentación |
+|------|--------|-------------|---------------|
+| **Fase 1** | ✅ COMPLETADA | Verificación infraestructura Docker | [FASE1_RESUMEN.md](docs/FASE1_RESUMEN.md) |
+| **Fase 2** | ✅ COMPLETADA | Carga de 885 MB CSV a HDFS | [FASE2_RESUMEN.md](docs/FASE2_RESUMEN.md) |
+| **Fase 3** | ✅ COMPLETADA | ETL a Parquet tipado (293 MB) | [FASE3_RESUMEN.md](docs/FASE3_RESUMEN.md) |
+| **Fase 4** | 🔄 PENDIENTE | Features de contenido (géneros, tags) | - |
+| **Fase 5** | 🔄 PENDIENTE | Entrenamiento modelo ALS | - |
+| **Fase 6** | 🔄 PENDIENTE | Evaluación y métricas | - |
+| **Fase 7** | 🔄 PENDIENTE | Producer Kafka (ratings sintéticos) | - |
+| **Fase 8** | 🔄 PENDIENTE | Streaming processor con métricas | - |
+| **Fase 9** | 🔄 PENDIENTE | Persistencia de streams en HDFS | - |
+| **Fase 10** | 🔄 PENDIENTE | Analytics batch sobre streams | - |
+>>>>>>> 472dd09 (feat: Implement FASE 3 ETL process for MovieLens data)
 
 - **Recomienda películas** personalizadas a cada usuario basándose en su historial de valoraciones y las preferencias de usuarios similares
 - **Procesa datos en tiempo real** para actualizar las recomendaciones instantáneamente cuando un usuario califica una nueva película

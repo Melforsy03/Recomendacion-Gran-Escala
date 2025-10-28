@@ -2,7 +2,37 @@
 
 Referencia rápida de comandos útiles para operar el sistema.
 
-## 🚀 Inicio Rápido
+# Comandos Rápidos - Sistema de Recomendación
+
+## 🎯 Guía Rápida de Operaciones
+
+---
+
+## � **FASE 3: ETL PARQUET** (✅ COMPLETADA)
+
+### Ejecutar ETL completo
+```bash
+./scripts/recsys-utils.sh spark-submit movies/src/etl/etl_movielens.py
+```
+
+### Verificar datos Parquet
+```bash
+./scripts/recsys-utils.sh spark-submit movies/src/etl/verify_parquet.py
+```
+
+### Ver tamaños en HDFS
+```bash
+./scripts/recsys-utils.sh hdfs-du /data/movielens_parquet
+```
+
+### Listar particiones de ratings
+```bash
+docker exec namenode hdfs dfs -ls -R /data/movielens_parquet/ratings | head -50
+```
+
+---
+
+## 🚀 **INICIO RÁPIDO DEL SISTEMA**
 
 ```bash
 # Iniciar el sistema completo
