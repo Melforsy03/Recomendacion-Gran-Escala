@@ -12,6 +12,9 @@ python-dateutil>=2.8.2
 pytz>=2020.1
 tzdata>=2022.1
 
+# Kafka Streaming (Fase 6)
+kafka-python>=2.0.2
+
 # PySpark MLlib dependencies (included with Spark, listed for reference)
 # pyspark==3.4.1
 # py4j==0.10.9.7
