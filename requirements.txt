@@ -1,0 +1,17 @@
+# Python Dependencies for MovieLens Recommendation System
+# Install in Spark containers:
+# docker exec -u root spark-master pip install -r requirements.txt
+# docker exec -u root spark-worker pip install -r requirements.txt
+
+# Core Scientific Computing
+numpy>=1.24.4
+pandas>=2.0.3
+
+# Date/Time handling
+python-dateutil>=2.8.2
+pytz>=2020.1
+tzdata>=2022.1
+
+# PySpark MLlib dependencies (included with Spark, listed for reference)
+# pyspark==3.4.1
+# py4j==0.10.9.7
