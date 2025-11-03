@@ -110,6 +110,7 @@ services:
     image: apache/spark:3.4.1
     container_name: spark-master
     hostname: spark-master
+    user: root
     environment:
       - SPARK_MODE=master
       - SPARK_MASTER_WEBUI_PORT=8080
@@ -121,6 +122,7 @@ services:
       - spark-ivy-cache:/root/.ivy2
       - ./hadoop-conf:/opt/hadoop-conf:ro
       - spark_master_data:/opt/spark/data
+      - ./requirements.txt:/tmp/requirements.txt:ro
     ports:
       - "7077:7077"
       - "8080:8080"
@@ -132,11 +134,12 @@ services:
       - datapipeline
     command: >
       bash -c "
+      pip install --no-cache-dir -r /tmp/requirements.txt &&
       /opt/spark/sbin/start-master.sh && tail -f /dev/null
       "
     healthcheck:
-      # Chequea que el puerto RPC 7077 esté aceptando conexiones dentro del contenedor
-      test: ["CMD-SHELL", "bash -lc 'echo > /dev/tcp/localhost/7077'"]
+      # Chequea que el proceso java de Spark Master esté corriendo
+      test: ["CMD-SHELL", "pgrep -f 'org.apache.spark.deploy.master.Master'"]
       interval: 5s
       timeout: 3s
       retries: 30
@@ -145,6 +148,7 @@ services:
     image: apache/spark:3.4.1
     container_name: spark-worker
     hostname: spark-worker
+    user: root
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
@@ -159,6 +163,7 @@ services:
       - spark-ivy-cache:/root/.ivy2
       - ./hadoop-conf:/opt/hadoop-conf:ro
       - spark_worker_data:/opt/spark/data
+      - ./requirements.txt:/tmp/requirements.txt:ro
     ports:
       - "8081:8081"
     depends_on:
@@ -167,6 +172,7 @@ services:
       - datapipeline
     command: >
       bash -c "
+      pip install --no-cache-dir -r /tmp/requirements.txt &&
       /opt/spark/sbin/start-worker.sh spark://spark-master:7077 && tail -f /dev/null
       "
 

@@ -4,7 +4,7 @@
 # docker exec -u root spark-worker pip install -r requirements.txt
 
 # Core Scientific Computing
-numpy>=1.24.4
+numpy>=1.24.4,<2.0.0
 pandas>=2.0.3
 
 # Date/Time handling

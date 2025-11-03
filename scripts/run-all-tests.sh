@@ -30,8 +30,8 @@ chmod +x \
   "$ROOT_DIR/tests/test-spark-standalone.sh" \
   "$ROOT_DIR/tests/test-spark-kafka.sh"
 
-echo "Esperando 30 segundos para que los servicios se estabilicen..."
-sleep 30
+# echo "Esperando 30 segundos para que los servicios se estabilicen..."
+# sleep 30
 
 # Test 1: Conectividad
 echo ""
