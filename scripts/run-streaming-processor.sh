@@ -119,8 +119,15 @@ echo ""
 docker exec spark-master spark-submit \
     --master spark://spark-master:7077 \
     --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1 \
-    --conf spark.sql.shuffle.partitions=20 \
+    --conf spark.sql.shuffle.partitions=8 \
     --conf spark.streaming.backpressure.enabled=true \
     --conf spark.streaming.kafka.maxRatePerPartition=100 \
+    --conf spark.driver.memory=512m \
+    --conf spark.executor.memory=1g \
+    --conf spark.executor.cores=2 \
+    --conf spark.cores.max=2 \
+    --conf spark.scheduler.mode=FAIR \
+    --conf spark.scheduler.allocation.file=file:///opt/spark/conf/fairscheduler.xml \
+    --conf spark.scheduler.pool=streaming \
     --conf spark.sql.streaming.checkpointLocation=hdfs://namenode:9000/checkpoints/ratings_stream/processor \
     /opt/spark/work-dir/streaming/ratings_stream_processor.py

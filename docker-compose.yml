@@ -117,12 +117,17 @@ services:
       - HADOOP_CONF_DIR=/opt/hadoop-conf
       - YARN_CONF_DIR=/opt/hadoop-conf
       - PATH=/opt/spark/bin:/opt/spark/sbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      - PIP_DEFAULT_TIMEOUT=300
+      - PIP_RETRIES=5
+      - PYTHONWARNINGS=ignore:Unverified HTTPS request
     volumes:
       - ./shared:/opt/spark/work-dir
       - spark-ivy-cache:/root/.ivy2
       - ./hadoop-conf:/opt/hadoop-conf:ro
       - spark_master_data:/opt/spark/data
       - ./requirements.txt:/tmp/requirements.txt:ro
+      - spark-pip-cache:/root/.cache/pip
+      - ./fairscheduler.xml:/opt/spark/conf/fairscheduler.xml:ro
     ports:
       - "7077:7077"
       - "8080:8080"
@@ -134,7 +139,33 @@ services:
       - datapipeline
     command: >
       bash -c "
-      pip install --no-cache-dir -r /tmp/requirements.txt &&
+      if [ ! -f /opt/spark/data/.pip_installed ]; then
+        echo 'Instalando dependencias de Python (primera vez)...' &&
+        echo 'Intentando instalación con reintentos...' &&
+        MAX_ATTEMPTS=3 &&
+        ATTEMPT=1 &&
+        while [ $$ATTEMPT -le $$MAX_ATTEMPTS ]; do
+          echo \"Intento $$ATTEMPT de $$MAX_ATTEMPTS...\" &&
+          if pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -r /tmp/requirements.txt; then
+            echo 'Instalación exitosa!' &&
+            touch /opt/spark/data/.pip_installed &&
+            break
+          else
+            echo \"Intento $$ATTEMPT falló\" &&
+            if [ $$ATTEMPT -lt $$MAX_ATTEMPTS ]; then
+              echo 'Esperando 10 segundos antes de reintentar...' &&
+              sleep 10
+            fi &&
+            ATTEMPT=$$((ATTEMPT + 1))
+          fi
+        done &&
+        if [ ! -f /opt/spark/data/.pip_installed ]; then
+          echo '⚠️ Advertencia: No se pudieron instalar todas las dependencias de Python' &&
+          echo 'El contenedor continuará ejecutándose, pero puede haber funcionalidad limitada'
+        fi
+      else
+        echo 'Dependencias ya instaladas, saltando instalación...';
+      fi &&
       /opt/spark/sbin/start-master.sh && tail -f /dev/null
       "
     healthcheck:
@@ -152,18 +183,23 @@ services:
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_MEMORY=2G
-      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=4G
+      - SPARK_WORKER_CORES=6
       - SPARK_WORKER_WEBUI_PORT=8081
       - HADOOP_CONF_DIR=/opt/hadoop-conf
       - YARN_CONF_DIR=/opt/hadoop-conf
       - PATH=/opt/spark/bin:/opt/spark/sbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      - PIP_DEFAULT_TIMEOUT=300
+      - PIP_RETRIES=5
+      - PYTHONWARNINGS=ignore:Unverified HTTPS request
     volumes:
       - ./shared:/opt/spark/work-dir
       - spark-ivy-cache:/root/.ivy2
       - ./hadoop-conf:/opt/hadoop-conf:ro
       - spark_worker_data:/opt/spark/data
       - ./requirements.txt:/tmp/requirements.txt:ro
+      - spark-pip-cache:/root/.cache/pip
+      - ./fairscheduler.xml:/opt/spark/conf/fairscheduler.xml:ro
     ports:
       - "8081:8081"
     depends_on:
@@ -172,9 +208,39 @@ services:
       - datapipeline
     command: >
       bash -c "
-      pip install --no-cache-dir -r /tmp/requirements.txt &&
+      if [ ! -f /opt/spark/data/.pip_installed ]; then
+        echo 'Instalando dependencias de Python (primera vez)...' &&
+        echo 'Esperando 30 segundos para evitar saturar la red...' &&
+        sleep 30 &&
+        echo 'Intentando instalación con reintentos...' &&
+        MAX_ATTEMPTS=3 &&
+        ATTEMPT=1 &&
+        while [ $$ATTEMPT -le $$MAX_ATTEMPTS ]; do
+          echo \"Intento $$ATTEMPT de $$MAX_ATTEMPTS...\" &&
+          if pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -r /tmp/requirements.txt; then
+            echo 'Instalación exitosa!' &&
+            touch /opt/spark/data/.pip_installed &&
+            break
+          else
+            echo \"Intento $$ATTEMPT falló\" &&
+            if [ $$ATTEMPT -lt $$MAX_ATTEMPTS ]; then
+              echo 'Esperando 10 segundos antes de reintentar...' &&
+              sleep 10
+            fi &&
+            ATTEMPT=$$((ATTEMPT + 1))
+          fi
+        done &&
+        if [ ! -f /opt/spark/data/.pip_installed ]; then
+          echo '⚠️ Advertencia: No se pudieron instalar todas las dependencias de Python' &&
+          echo 'El contenedor continuará ejecutándose, pero puede haber funcionalidad limitada'
+        fi
+      else
+        echo 'Dependencias ya instaladas, saltando instalación...';
+      fi &&
       /opt/spark/sbin/start-worker.sh spark://spark-master:7077 && tail -f /dev/null
       "
+
+  # --- Kafka 3.5 Cluster (Java 8 compatible) ---
 
   # --- Kafka 3.5 Cluster (Java 8 compatible) ---
   zookeeper:
@@ -221,7 +287,7 @@ services:
       context: ./movies/api
       dockerfile: Dockerfile
     container_name: recs-api
-    hostname: recs-api
+    hostname: api
     environment:
       - KAFKA_BOOTSTRAP=kafka:9092
       - METRICS_TOPIC=metrics
@@ -231,6 +297,32 @@ services:
       - "8000:8000"
     networks:
       - datapipeline
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/metrics/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- Dashboard Streamlit para visualización en tiempo real ---
+  dashboard:
+    build:
+      context: ./movies/dashboard
+      dockerfile: Dockerfile
+    container_name: recs-dashboard
+    hostname: dashboard
+    environment:
+      - API_BASE_URL=http://api:8000
+    depends_on:
+      - api
+    ports:
+      - "8501:8501"
+    networks:
+      - datapipeline
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   namenode_data:
@@ -241,4 +333,6 @@ volumes:
   zookeeper_log:
   kafka_data:
   spark-ivy-cache:
+    driver: local
+  spark-pip-cache:
     driver: local

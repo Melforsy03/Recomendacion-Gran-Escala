@@ -9,8 +9,10 @@ WORKDIR /app
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# Copiamos la app
+# Copiamos la app, services y routes
 COPY app /app/app
+COPY services /app/services
+COPY routes /app/routes
 
 ENV KAFKA_BOOTSTRAP=kafka:9092 \
     METRICS_TOPIC=metrics \

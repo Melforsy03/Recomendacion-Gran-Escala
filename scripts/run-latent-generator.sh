@@ -68,6 +68,15 @@ else
     echo -e "${YELLOW}💡 Se creará automáticamente al enviar mensajes${NC}"
 fi
 
+# Verificar estado del checkpoint
+echo -e "${YELLOW}🔍 Verificando checkpoint...${NC}"
+if docker exec namenode hadoop fs -test -d /checkpoints/latent_ratings 2>/dev/null; then
+    echo -e "${YELLOW}⚠️  Checkpoint existente detectado en /checkpoints/latent_ratings${NC}"
+    echo -e "${YELLOW}💡 Si hay errores, ejecuta: ./scripts/clean-checkpoints.sh latent${NC}"
+else
+    echo -e "${GREEN}✅ No hay checkpoint previo (inicio limpio)${NC}"
+fi
+
 echo ""
 echo "==============================================================================="
 echo -e "${GREEN}▶️  INICIANDO GENERADOR...${NC}"
@@ -78,13 +87,20 @@ echo ""
 echo -e "${YELLOW}ℹ Copiando script a spark-master...${NC}"
 docker cp "$GENERATOR_SCRIPT" spark-master:/tmp/latent_generator.py
 
-# Ejecutar con spark-submit (CON PAQUETE KAFKA)
+# Ejecutar con spark-submit (CON PAQUETE KAFKA Y RECURSOS LIMITADOS)
 docker exec spark-master spark-submit \
     --master spark://spark-master:7077 \
     --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1 \
-    --conf spark.sql.shuffle.partitions=10 \
+    --conf spark.sql.shuffle.partitions=8 \
     --conf spark.streaming.backpressure.enabled=true \
     --conf spark.streaming.kafka.maxRatePerPartition=200 \
+    --conf spark.driver.memory=512m \
+    --conf spark.executor.memory=512m \
+    --conf spark.executor.cores=1 \
+    --conf spark.cores.max=1 \
+    --conf spark.scheduler.mode=FAIR \
+    --conf spark.scheduler.allocation.file=file:///opt/spark/conf/fairscheduler.xml \
+    --conf spark.scheduler.pool=generator \
     /tmp/latent_generator.py "$THROUGHPUT"
 
 # Capturar código de salida
