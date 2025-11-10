@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<allocations>
+  <!-- Pool para Streaming Processor - Prioridad ALTA -->
+  <pool name="streaming">
+    <schedulingMode>FAIR</schedulingMode>
+    <weight>2</weight>
+    <minShare>1</minShare>
+  </pool>
+
+  <!-- Pool para Batch Analytics - Prioridad MEDIA -->
+  <pool name="batch">
+    <schedulingMode>FAIR</schedulingMode>
+    <weight>1</weight>
+    <minShare>1</minShare>
+  </pool>
+
+  <!-- Pool para Latent Generator - Prioridad BAJA -->
+  <pool name="generator">
+    <schedulingMode>FAIR</schedulingMode>
+    <weight>1</weight>
+    <minShare>1</minShare>
+  </pool>
+
+  <!-- Pool por defecto para otros jobs -->
+  <pool name="default">
+    <schedulingMode>FAIR</schedulingMode>
+    <weight>1</weight>
+    <minShare>0</minShare>
+  </pool>
+</allocations>

@@ -97,7 +97,11 @@ function hdfs_status() {
 
 function kafka_topics() {
     print_header "Topics de Kafka"
-    docker exec kafka kafka-topics --list --bootstrap-server localhost:9092
+    if ! docker exec kafka kafka-topics --list --bootstrap-server localhost:9092 2>/dev/null; then
+        print_error "No se puede conectar a Kafka. Verifica que el servicio esté corriendo."
+        print_info "Intenta: docker logs kafka --tail 50"
+        return 1
+    fi
 }
 
 function kafka_create_topic() {

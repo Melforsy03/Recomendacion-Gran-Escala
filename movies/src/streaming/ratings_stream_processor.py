@@ -129,11 +129,13 @@ def read_ratings_stream(spark: SparkSession) -> DataFrame:
     print(f"   Bootstrap servers: {KAFKA_BOOTSTRAP_SERVERS}")
     
     # Leer stream de Kafka
+    # IMPORTANTE: usar "earliest" para procesar mensajes históricos en primera ejecución
+    # Después del checkpoint, continuará desde donde quedó
     kafka_df = spark.readStream \
         .format("kafka") \
         .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS) \
         .option("subscribe", KAFKA_INPUT_TOPIC) \
-        .option("startingOffsets", "latest") \
+        .option("startingOffsets", "earliest") \
         .option("failOnDataLoss", "false") \
         .load()
     

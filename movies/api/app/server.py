@@ -8,13 +8,47 @@ import orjson
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from aiokafka import AIOKafkaConsumer
 
+# Importar servicios y rutas de métricas (intentar, si falla continuar sin ellas)
+try:
+    from services.metrics_consumer import start_consumer, stop_consumer
+    from routes.metrics import router as metrics_router
+    METRICS_AVAILABLE = True
+    print("✅ Metrics modules imported successfully")
+except ImportError as e:
+    print(f"⚠️  Warning: Metrics module not available: {e}")
+    METRICS_AVAILABLE = False
+    start_consumer = None
+    stop_consumer = None
+    metrics_router = None
 
-KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "localhost:9093")
+
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
 METRICS_TOPIC = os.getenv("METRICS_TOPIC", "metrics")
 
-app = FastAPI(title="Realtime Recs Metrics API")
+app = FastAPI(
+    title="Realtime Recs Metrics API",
+    description="API para métricas de streaming en tiempo real - Fase 9",
+    version="2.0.0"
+)
+
+# Configurar CORS para permitir acceso desde dashboard
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # En producción, especificar dominios
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Incluir rutas de métricas si están disponibles
+if METRICS_AVAILABLE and metrics_router:
+    app.include_router(metrics_router)
+    print("✅ Metrics router registered")
+else:
+    print("⚠️  Metrics router not available, using legacy endpoints only")
 
 
 class ConnectionManager:
@@ -96,5 +130,19 @@ async def startup_event():
     static_dir = os.path.join(os.path.dirname(__file__), "static")
     if os.path.isdir(static_dir):
         app.mount("/static", StaticFiles(directory=static_dir), name="static")
-    # Lanzamos consumidor en background
+    
+    # Iniciar consumer de métricas del nuevo sistema si está disponible
+    if METRICS_AVAILABLE and start_consumer:
+        await start_consumer()
+        print("✅ Metrics consumer started")
+    else:
+        print("⚠️  Metrics consumer not available, using legacy consumer only")
+    
+    # Mantener consumidor legacy en background para compatibilidad
     asyncio.create_task(consume_metrics())
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    # Detener consumer de métricas si está disponible
+    if METRICS_AVAILABLE and stop_consumer:
+        await stop_consumer()

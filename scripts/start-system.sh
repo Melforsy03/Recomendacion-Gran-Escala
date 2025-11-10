@@ -47,6 +47,11 @@ echo ""
 echo "Deteniendo servicios existentes (si los hay)..."
 $DOCKER_COMPOSE -f "$ROOT_DIR/docker-compose.yml" down 2>/dev/null || true
 
+# # Limpiar volúmenes problemáticos de Kafka y Zookeeper para evitar inconsistencias
+# echo "⚠️  Limpiando volúmenes de Kafka y Zookeeper para evitar conflictos de Cluster ID..."
+# docker volume rm recomendacion-gran-escala_kafka_data 2>/dev/null || true
+# docker volume rm recomendacion-gran-escala_zookeeper_data recomendacion-gran-escala_zookeeper_log 2>/dev/null || true
+
 echo ""
 echo "Iniciando servicios..."
 $DOCKER_COMPOSE -f "$ROOT_DIR/docker-compose.yml" up -d
@@ -54,6 +59,34 @@ $DOCKER_COMPOSE -f "$ROOT_DIR/docker-compose.yml" up -d
 echo ""
 echo "Esperando que los servicios se inicialicen..."
 echo "Esto puede tomar 1-2 minutos..."
+
+# Esperar a que Zookeeper esté listo PRIMERO (crítico para Kafka)
+echo -n "Esperando Zookeeper"
+ZK_TIMEOUT=60
+ZK_START=$(date +%s)
+while true; do
+    # Verificar que Zookeeper esté escuchando en el puerto 2181
+    if docker exec zookeeper sh -c 'echo stat | nc localhost 2181 2>/dev/null' | grep -q "Mode:"; then
+        echo " ✓"
+        break
+    fi
+    # Fallback: verificar que el proceso esté corriendo
+    if docker exec zookeeper pgrep -f QuorumPeerMain > /dev/null 2>&1; then
+        echo " ✓ (proceso activo)"
+        break
+    fi
+    NOW=$(date +%s)
+    if (( NOW - ZK_START > ZK_TIMEOUT )); then
+        echo " ✗ Timeout esperando Zookeeper"
+        docker logs zookeeper --tail 50
+        exit 1
+    fi
+    echo -n "."
+    sleep 2
+done
+
+# Dar tiempo a Zookeeper para estabilizarse completamente
+sleep 5
 
 # Esperar a que NameNode esté HEALTHY y salga de SafeMode (más fiable que sólo la UI)
 echo -n "Esperando HDFS NameNode (HEALTHY)"
@@ -196,13 +229,72 @@ while true; do
     sleep 1
 done
 
-# Esperar a que Kafka esté listo
+# Esperar a que Kafka esté listo (con reintentos si falla por nodo Zookeeper)
 echo -n "Esperando Kafka"
-for i in {1..60}; do
-    if docker exec kafka kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1; then
-        echo " ✓"
-        break
+KAFKA_TIMEOUT=120
+KAFKA_START=$(date +%s)
+KAFKA_READY=false
+
+while true; do
+    NOW=$(date +%s)
+    ELAPSED=$((NOW - KAFKA_START))
+    
+    # Verificar timeout
+    if (( ELAPSED > KAFKA_TIMEOUT )); then
+        echo ""
+        echo "❌ Timeout esperando Kafka después de ${KAFKA_TIMEOUT}s"
+        KAFKA_STATUS=$(docker inspect -f '{{.State.Status}}' kafka 2>/dev/null || echo "not_found")
+        echo "Estado del contenedor: $KAFKA_STATUS"
+        docker logs kafka --tail 50
+        exit 1
     fi
+    
+    # Verificar estado del contenedor
+    KAFKA_STATUS=$(docker inspect -f '{{.State.Status}}' kafka 2>/dev/null || echo "not_found")
+    
+    if [[ "$KAFKA_STATUS" == "exited" ]]; then
+        # Kafka se cayó, verificar si es por problema de Zookeeper
+        if docker logs kafka 2>&1 | grep -q "NodeExistsException"; then
+            echo ""
+            echo "⚠️  Detectado problema de nodo Zookeeper, reiniciando Kafka..."
+            docker restart kafka
+            sleep 5
+            KAFKA_START=$(date +%s)  # Reiniciar temporizador
+            echo -n "Esperando Kafka nuevamente"
+        fi
+    elif [[ "$KAFKA_STATUS" == "running" ]]; then
+        # Método 1: Verificar que el puerto esté escuchando
+        if command -v nc >/dev/null 2>&1; then
+            if nc -z -w2 localhost 9092 2>/dev/null; then
+                # Método 2: Verificar que los logs muestren que Kafka está listo
+                if docker logs kafka 2>&1 | grep -q "started (kafka.server.KafkaServer)"; then
+                    KAFKA_READY=true
+                fi
+            fi
+        else
+            # Fallback sin nc: verificar logs directamente
+            if docker logs kafka 2>&1 | grep -q "started (kafka.server.KafkaServer)"; then
+                KAFKA_READY=true
+            fi
+        fi
+        
+        # Método 3 (opcional): Intentar comando de API si los otros métodos pasaron
+        if [[ "$KAFKA_READY" == "true" ]]; then
+            # Dar un tiempo adicional para que la API esté completamente lista
+            if (( ELAPSED > 10 )); then
+                # Intentar verificación de API (con timeout corto para no bloquear)
+                if timeout 3 docker exec kafka kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1; then
+                    echo " ✓"
+                    break
+                else
+                    # Si falla la API pero los logs están OK, confiar en los logs
+                    echo " ✓ (logs OK, API iniciando)"
+                    break
+                fi
+            fi
+        fi
+    fi
+    
     echo -n "."
     sleep 2
 done

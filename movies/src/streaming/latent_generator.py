@@ -335,17 +335,19 @@ def transform_to_ratings(
     return ratings_df
 
 
-def write_to_kafka(ratings_df: DataFrame, checkpoint_path: str):
+def write_to_kafka(ratings_df: DataFrame, checkpoint_path: str, spark: SparkSession):
     """
     Escribir ratings a Kafka con formato JSON.
     
     Args:
         ratings_df: DataFrame de ratings
         checkpoint_path: Ruta para checkpointing
+        spark: SparkSession para limpiar checkpoint si es necesario
     """
     print(f"📤 Configurando Kafka sink → {KAFKA_TOPIC}")
     print(f"   Bootstrap servers: {KAFKA_BOOTSTRAP_SERVERS}")
     print(f"   Checkpoint: {checkpoint_path}")
+    print(f"   💡 Si hay errores de checkpoint, ejecuta: ./scripts/clean-checkpoints.sh latent")
     
     # Convertir a JSON
     kafka_df = ratings_df.select(
@@ -431,7 +433,7 @@ def main(rows_per_second: int = DEFAULT_ROWS_PER_SECOND):
     checkpoint_path = f"{HDFS_BASE}/checkpoints/latent_ratings"
     
     print("\n📤 Iniciando escritura a Kafka...")
-    query = write_to_kafka(ratings_stream, checkpoint_path)
+    query = write_to_kafka(ratings_stream, checkpoint_path, spark)
     
     # 7. Monitoreo
     print("\n" + "=" * 80)
