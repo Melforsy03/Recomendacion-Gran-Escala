@@ -25,6 +25,19 @@ GENERATOR_SCRIPT="$PROJECT_ROOT/movies/src/streaming/latent_generator.py"
 # Throughput (ratings/segundo)
 THROUGHPUT="${1:-100}"
 
+# Función de limpieza para detener procesos al cerrar el script
+cleanup() {
+    echo ""
+    echo "==============================================================================="
+    echo -e "${YELLOW}🛑 Interrupción detectada. Deteniendo procesos en spark-master...${NC}"
+    # Intentar matar el proceso por nombre
+    docker exec spark-master pkill -f "latent_generator.py" 2>/dev/null || true
+    echo -e "${GREEN}✅ Limpieza completada.${NC}"
+    echo "==============================================================================="
+    exit 0
+}
+trap cleanup SIGINT SIGTERM
+
 # Validar que el script existe
 if [[ ! -f "$GENERATOR_SCRIPT" ]]; then
     echo -e "${RED}❌ Error: No se encuentra $GENERATOR_SCRIPT${NC}"
@@ -83,12 +96,39 @@ echo -e "${GREEN}▶️  INICIANDO GENERADOR...${NC}"
 echo "==============================================================================="
 echo ""
 
+# Verificar dependencias de Python
+echo -e "${YELLOW}🔍 Verificando dependencias de Python...${NC}"
+DEPS_CHECK=$(docker exec spark-master bash -c "python3 -c 'import numpy, pandas, kafka' 2>&1")
+if [ $? -ne 0 ]; then
+    echo -e "${RED}❌ Error: Dependencias de Python no disponibles${NC}"
+    echo -e "${YELLOW}💡 Intentando reinstalar dependencias...${NC}"
+    docker exec spark-master bash -c "
+        PYTHON_VERSION=\$(python3 --version | cut -d' ' -f2 | cut -d'.' -f1,2)
+        SITE_PACKAGES=/opt/spark-python-libs/lib/python\${PYTHON_VERSION}/site-packages
+        mkdir -p \${SITE_PACKAGES}
+        pip install --no-warn-script-location --target=\${SITE_PACKAGES} --trusted-host pypi.org --trusted-host files.pythonhosted.org -r /tmp/requirements.txt
+    "
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}❌ Error: No se pudieron instalar las dependencias${NC}"
+        exit 1
+    fi
+fi
+echo -e "${GREEN}✅ Dependencias de Python disponibles${NC}"
+
 # Copiar script a contenedor
 echo -e "${YELLOW}ℹ Copiando script a spark-master...${NC}"
 docker cp "$GENERATOR_SCRIPT" spark-master:/tmp/latent_generator.py
 
+# Obtener versión de Python y configurar PYTHONPATH
+PYTHON_VERSION=$(docker exec spark-master python3 --version | cut -d' ' -f2 | cut -d'.' -f1,2)
+PYTHON_LIBS_PATH="/opt/spark-python-libs/lib/python${PYTHON_VERSION}/site-packages"
+
+echo -e "${YELLOW}ℹ Configurando PYTHONPATH: ${PYTHON_LIBS_PATH}${NC}"
+
 # Ejecutar con spark-submit (CON PAQUETE KAFKA Y RECURSOS LIMITADOS)
-docker exec spark-master spark-submit \
+docker exec spark-master bash -c "
+export PYTHONPATH=${PYTHON_LIBS_PATH}:\$PYTHONPATH
+spark-submit \
     --master spark://spark-master:7077 \
     --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1 \
     --conf spark.sql.shuffle.partitions=8 \
@@ -101,7 +141,9 @@ docker exec spark-master spark-submit \
     --conf spark.scheduler.mode=FAIR \
     --conf spark.scheduler.allocation.file=file:///opt/spark/conf/fairscheduler.xml \
     --conf spark.scheduler.pool=generator \
-    /tmp/latent_generator.py "$THROUGHPUT"
+    --conf spark.executorEnv.PYTHONPATH=${PYTHON_LIBS_PATH} \
+    /tmp/latent_generator.py $THROUGHPUT
+"
 
 # Capturar código de salida
 EXIT_CODE=$?

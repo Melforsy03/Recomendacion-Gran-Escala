@@ -12,6 +12,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
 # Directorio del proyecto
@@ -54,10 +55,10 @@ echo "==========================================================================
 echo ""
 
 # Copiar requirements al contenedor master
-docker cp "$REQUIREMENTS_FILE" spark-master:/tmp/requirements.txt
+docker cp "$REQUIREMENTS_FILE" spark-master:/tmp/requirements_temp.txt
 
 # Instalar en master
-docker exec spark-master bash -c "pip install --quiet -r /tmp/requirements.txt && rm /tmp/requirements.txt"
+docker exec spark-master bash -c "pip install --quiet -r /tmp/requirements_temp.txt && rm /tmp/requirements_temp.txt"
 
 if [[ $? -eq 0 ]]; then
     echo -e "${GREEN}✅ Dependencias instaladas en spark-master${NC}"
@@ -73,10 +74,10 @@ echo "==========================================================================
 echo ""
 
 # Copiar requirements al contenedor worker
-docker cp "$REQUIREMENTS_FILE" spark-worker:/tmp/requirements.txt
+docker cp "$REQUIREMENTS_FILE" spark-worker:/tmp/requirements_temp.txt
 
 # Instalar en worker
-docker exec spark-worker bash -c "pip install --quiet -r /tmp/requirements.txt && rm /tmp/requirements.txt"
+docker exec spark-worker bash -c "pip install --quiet -r /tmp/requirements_temp.txt && rm /tmp/requirements_temp.txt"
 
 if [[ $? -eq 0 ]]; then
     echo -e "${GREEN}✅ Dependencias instaladas en spark-worker${NC}"
@@ -93,7 +94,7 @@ echo ""
 
 # Verificar numpy en master
 echo -e "${CYAN}Verificando numpy en spark-master:${NC}"
-NUMPY_VERSION=$(docker exec spark-master python -c "import numpy; print(numpy.__version__)" 2>/dev/null)
+NUMPY_VERSION=$(docker exec spark-master python3 -c "import numpy; print(numpy.__version__)" 2>/dev/null)
 if [[ -n "$NUMPY_VERSION" ]]; then
     echo -e "${GREEN}✅ numpy ${NUMPY_VERSION} instalado${NC}"
 else
@@ -102,7 +103,7 @@ fi
 
 # Verificar pandas en master
 echo -e "${CYAN}Verificando pandas en spark-master:${NC}"
-PANDAS_VERSION=$(docker exec spark-master python -c "import pandas; print(pandas.__version__)" 2>/dev/null)
+PANDAS_VERSION=$(docker exec spark-master python3 -c "import pandas; print(pandas.__version__)" 2>/dev/null)
 if [[ -n "$PANDAS_VERSION" ]]; then
     echo -e "${GREEN}✅ pandas ${PANDAS_VERSION} instalado${NC}"
 else
@@ -111,7 +112,7 @@ fi
 
 # Verificar kafka-python en master
 echo -e "${CYAN}Verificando kafka-python en spark-master:${NC}"
-KAFKA_VERSION=$(docker exec spark-master python -c "import kafka; print(kafka.__version__)" 2>/dev/null)
+KAFKA_VERSION=$(docker exec spark-master python3 -c "import kafka; print(kafka.__version__)" 2>/dev/null)
 if [[ -n "$KAFKA_VERSION" ]]; then
     echo -e "${GREEN}✅ kafka-python ${KAFKA_VERSION} instalado${NC}"
 else
