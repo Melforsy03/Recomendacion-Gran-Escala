@@ -395,7 +395,7 @@ def write_metrics_to_kafka(metrics_df: DataFrame, checkpoint_suffix: str = "metr
         .option("topic", KAFKA_OUTPUT_TOPIC) \
         .option("checkpointLocation", f"{HDFS_CHECKPOINT_PATH}/{checkpoint_suffix}") \
         .outputMode("append") \
-        .trigger(processingTime="10 seconds") \
+        .trigger(processingTime="20 seconds") \
         .start()
     
     print(f"✅ Escritura MÉTRICAS a Kafka iniciada (checkpoint: {checkpoint_suffix})")

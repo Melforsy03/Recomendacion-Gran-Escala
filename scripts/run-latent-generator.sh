@@ -98,18 +98,22 @@ echo ""
 
 # Verificar dependencias de Python
 echo -e "${YELLOW}🔍 Verificando dependencias de Python...${NC}"
-DEPS_CHECK=$(docker exec spark-master bash -c "python3 -c 'import numpy, pandas, kafka' 2>&1")
-if [ $? -ne 0 ]; then
-    echo -e "${RED}❌ Error: Dependencias de Python no disponibles${NC}"
-    echo -e "${YELLOW}💡 Intentando reinstalar dependencias...${NC}"
-    docker exec spark-master bash -c "
-        PYTHON_VERSION=\$(python3 --version | cut -d' ' -f2 | cut -d'.' -f1,2)
-        SITE_PACKAGES=/opt/spark-python-libs/lib/python\${PYTHON_VERSION}/site-packages
-        mkdir -p \${SITE_PACKAGES}
-        pip install --no-warn-script-location --target=\${SITE_PACKAGES} --trusted-host pypi.org --trusted-host files.pythonhosted.org -r /tmp/requirements.txt
-    "
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}❌ Error: No se pudieron instalar las dependencias${NC}"
+if ! docker exec spark-master bash -c "python3 -c 'import numpy, pandas, kafka' 2>/dev/null"; then
+    echo -e "${YELLOW}⚠️  Faltan dependencias o hubo un error en la verificación.${NC}"
+    echo -e "${YELLOW}📦 Ejecutando script de instalación de dependencias...${NC}"
+    
+    if [[ -f "$SCRIPT_DIR/instalar-dependencias-spark.sh" ]]; then
+        # Dar permisos de ejecución por si acaso
+        chmod +x "$SCRIPT_DIR/instalar-dependencias-spark.sh"
+        "$SCRIPT_DIR/instalar-dependencias-spark.sh"
+        
+        # Verificar nuevamente después de la instalación
+        if ! docker exec spark-master bash -c "python3 -c 'import numpy, pandas, kafka' 2>/dev/null"; then
+            echo -e "${RED}❌ Error: Las dependencias siguen faltando después de la instalación.${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${RED}❌ Error: No se encuentra el script $SCRIPT_DIR/instalar-dependencias-spark.sh${NC}"
         exit 1
     fi
 fi
