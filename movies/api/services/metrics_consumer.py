@@ -33,12 +33,12 @@ from aiokafka.errors import KafkaError
 
 KAFKA_BOOTSTRAP_SERVERS = "kafka:9092"
 KAFKA_TOPIC = "metrics"
-KAFKA_GROUP_ID = "api-metrics-consumer"
+KAFKA_GROUP_ID = "api-metrics-consumer-debug-v1"
 MAX_HISTORY_SIZE = 100  # Máximo de mensajes históricos en memoria
 
 # Logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -167,13 +167,26 @@ class MetricsKafkaConsumer:
             value_deserializer=lambda m: json.loads(m.decode('utf-8'))
         )
         
-        await self.consumer.start()
-        logger.info("✅ Consumer de Kafka iniciado correctamente")
+        # Lógica de reintento para conexión
+        max_retries = 20
+        retry_interval = 5
         
-        self.running = True
-        
-        # Iniciar consumo en background
-        asyncio.create_task(self._consume_loop())
+        for attempt in range(max_retries):
+            try:
+                await self.consumer.start()
+                logger.info("✅ Consumer de Kafka iniciado correctamente")
+                self.running = True
+                # Iniciar consumo en background
+                asyncio.create_task(self._consume_loop())
+                return
+            except Exception as e:
+                logger.warning(f"⚠️ Intento {attempt + 1}/{max_retries} falló al conectar con Kafka: {e}")
+                if attempt < max_retries - 1:
+                    logger.info(f"Reintentando en {retry_interval} segundos...")
+                    await asyncio.sleep(retry_interval)
+                else:
+                    logger.error("❌ No se pudo conectar a Kafka después de varios intentos")
+                    raise e
     
     async def stop(self):
         """Detiene el consumer"""
@@ -191,6 +204,7 @@ class MetricsKafkaConsumer:
         
         try:
             async for message in self.consumer:
+                logger.info(f"DEBUG: Mensaje recibido offset={message.offset}")
                 if not self.running:
                     break
                 

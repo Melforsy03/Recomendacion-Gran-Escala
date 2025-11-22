@@ -28,6 +28,19 @@ function print_error() {
 print_info "Procesador de Ratings Streaming - Fase 8"
 echo ""
 
+# Función de limpieza para detener procesos al cerrar el script
+cleanup() {
+    echo ""
+    echo "==============================================================================="
+    echo -e "${YELLOW}🛑 Interrupción detectada. Deteniendo procesos en spark-master...${NC}"
+    # Intentar matar el proceso por nombre
+    docker exec spark-master pkill -f "ratings_stream_processor.py" 2>/dev/null || true
+    echo -e "${GREEN}✅ Limpieza completada.${NC}"
+    echo "==============================================================================="
+    exit 0
+}
+trap cleanup SIGINT SIGTERM
+
 # 1. Verificar que Kafka esté corriendo
 print_info "Verificando servicios..."
 if ! docker ps | grep -q kafka; then
@@ -122,6 +135,9 @@ docker exec spark-master spark-submit \
     --conf spark.sql.shuffle.partitions=8 \
     --conf spark.streaming.backpressure.enabled=true \
     --conf spark.streaming.kafka.maxRatePerPartition=100 \
+    --conf spark.sql.broadcastTimeout=600 \
+    --conf spark.sql.autoBroadcastJoinThreshold=-1 \
+    --conf spark.network.timeout=600s \
     --conf spark.driver.memory=512m \
     --conf spark.executor.memory=1g \
     --conf spark.executor.cores=2 \

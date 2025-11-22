@@ -49,7 +49,7 @@ SLIDING_WINDOW_SIZE = "5 minutes"
 SLIDING_WINDOW_SLIDE = "1 minute"
 
 # Watermark para late data
-WATERMARK_DELAY = "10 minutes"
+WATERMARK_DELAY = "10 seconds"
 
 # Top-N películas
 TOP_N_MOVIES = 10

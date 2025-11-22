@@ -127,6 +127,7 @@ services:
       - spark_master_data:/opt/spark/data
       - ./requirements.txt:/tmp/requirements.txt:ro
       - spark-pip-cache:/root/.cache/pip
+      - spark-python-libs:/opt/spark-python-libs
       - ./fairscheduler.xml:/opt/spark/conf/fairscheduler.xml:ro
     ports:
       - "7077:7077"
@@ -139,33 +140,38 @@ services:
       - datapipeline
     command: >
       bash -c "
-      if [ ! -f /opt/spark/data/.pip_installed ]; then
-        echo 'Instalando dependencias de Python (primera vez)...' &&
-        echo 'Intentando instalación con reintentos...' &&
+      echo '🔍 Verificando dependencias de Python...' &&
+      PYTHON_VERSION=$$(python3 --version | cut -d' ' -f2 | cut -d'.' -f1,2) &&
+      SITE_PACKAGES=/opt/spark-python-libs/lib/python$$PYTHON_VERSION/site-packages &&
+      export PYTHONPATH=$$SITE_PACKAGES:$$PYTHONPATH &&
+      mkdir -p $$SITE_PACKAGES &&
+      if python3 -c 'import numpy, pandas, kafka' 2>/dev/null; then
+        echo '✅ Dependencias ya instaladas y funcionando'
+      else
+        echo '📦 Instalando dependencias en volumen persistente...' &&
         MAX_ATTEMPTS=3 &&
         ATTEMPT=1 &&
-        while [ $$ATTEMPT -le $$MAX_ATTEMPTS ]; do
-          echo \"Intento $$ATTEMPT de $$MAX_ATTEMPTS...\" &&
-          if pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -r /tmp/requirements.txt; then
-            echo 'Instalación exitosa!' &&
-            touch /opt/spark/data/.pip_installed &&
-            break
+        INSTALL_SUCCESS=false &&
+        while [ $$ATTEMPT -le $$MAX_ATTEMPTS ] && [ \"$$INSTALL_SUCCESS\" = false ]; do
+          echo \"🔄 Intento $$ATTEMPT de $$MAX_ATTEMPTS...\" &&
+          if pip install --no-warn-script-location --target=$$SITE_PACKAGES --trusted-host pypi.org --trusted-host files.pythonhosted.org -r /tmp/requirements.txt; then
+            echo '✅ Instalación exitosa!' &&
+            INSTALL_SUCCESS=true
           else
-            echo \"Intento $$ATTEMPT falló\" &&
+            echo \"❌ Intento $$ATTEMPT falló\" &&
             if [ $$ATTEMPT -lt $$MAX_ATTEMPTS ]; then
-              echo 'Esperando 10 segundos antes de reintentar...' &&
+              echo '⏳ Esperando 10 segundos antes de reintentar...' &&
               sleep 10
             fi &&
             ATTEMPT=$$((ATTEMPT + 1))
           fi
         done &&
-        if [ ! -f /opt/spark/data/.pip_installed ]; then
+        if [ \"$$INSTALL_SUCCESS\" = false ]; then
           echo '⚠️ Advertencia: No se pudieron instalar todas las dependencias de Python' &&
           echo 'El contenedor continuará ejecutándose, pero puede haber funcionalidad limitada'
         fi
-      else
-        echo 'Dependencias ya instaladas, saltando instalación...';
       fi &&
+      echo '🚀 Iniciando Spark Master...' &&
       /opt/spark/sbin/start-master.sh && tail -f /dev/null
       "
     healthcheck:
@@ -199,6 +205,7 @@ services:
       - spark_worker_data:/opt/spark/data
       - ./requirements.txt:/tmp/requirements.txt:ro
       - spark-pip-cache:/root/.cache/pip
+      - spark-python-libs:/opt/spark-python-libs
       - ./fairscheduler.xml:/opt/spark/conf/fairscheduler.xml:ro
     ports:
       - "8081:8081"
@@ -208,35 +215,40 @@ services:
       - datapipeline
     command: >
       bash -c "
-      if [ ! -f /opt/spark/data/.pip_installed ]; then
-        echo 'Instalando dependencias de Python (primera vez)...' &&
-        echo 'Esperando 30 segundos para evitar saturar la red...' &&
-        sleep 30 &&
-        echo 'Intentando instalación con reintentos...' &&
+      echo '⏳ Esperando 30 segundos para evitar saturar la red...' &&
+      sleep 30 &&
+      echo '🔍 Verificando dependencias de Python...' &&
+      PYTHON_VERSION=$$(python3 --version | cut -d' ' -f2 | cut -d'.' -f1,2) &&
+      SITE_PACKAGES=/opt/spark-python-libs/lib/python$$PYTHON_VERSION/site-packages &&
+      export PYTHONPATH=$$SITE_PACKAGES:$$PYTHONPATH &&
+      mkdir -p $$SITE_PACKAGES &&
+      if python3 -c 'import numpy, pandas, kafka' 2>/dev/null; then
+        echo '✅ Dependencias ya instaladas y funcionando'
+      else
+        echo '📦 Instalando dependencias en volumen persistente...' &&
         MAX_ATTEMPTS=3 &&
         ATTEMPT=1 &&
-        while [ $$ATTEMPT -le $$MAX_ATTEMPTS ]; do
-          echo \"Intento $$ATTEMPT de $$MAX_ATTEMPTS...\" &&
-          if pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -r /tmp/requirements.txt; then
-            echo 'Instalación exitosa!' &&
-            touch /opt/spark/data/.pip_installed &&
-            break
+        INSTALL_SUCCESS=false &&
+        while [ $$ATTEMPT -le $$MAX_ATTEMPTS ] && [ \"$$INSTALL_SUCCESS\" = false ]; do
+          echo \"🔄 Intento $$ATTEMPT de $$MAX_ATTEMPTS...\" &&
+          if pip install --no-warn-script-location --target=$$SITE_PACKAGES --trusted-host pypi.org --trusted-host files.pythonhosted.org -r /tmp/requirements.txt; then
+            echo '✅ Instalación exitosa!' &&
+            INSTALL_SUCCESS=true
           else
-            echo \"Intento $$ATTEMPT falló\" &&
+            echo \"❌ Intento $$ATTEMPT falló\" &&
             if [ $$ATTEMPT -lt $$MAX_ATTEMPTS ]; then
-              echo 'Esperando 10 segundos antes de reintentar...' &&
+              echo '⏳ Esperando 10 segundos antes de reintentar...' &&
               sleep 10
             fi &&
             ATTEMPT=$$((ATTEMPT + 1))
           fi
         done &&
-        if [ ! -f /opt/spark/data/.pip_installed ]; then
+        if [ \"$$INSTALL_SUCCESS\" = false ]; then
           echo '⚠️ Advertencia: No se pudieron instalar todas las dependencias de Python' &&
           echo 'El contenedor continuará ejecutándose, pero puede haber funcionalidad limitada'
         fi
-      else
-        echo 'Dependencias ya instaladas, saltando instalación...';
       fi &&
+      echo '🚀 Iniciando Spark Worker...' &&
       /opt/spark/sbin/start-worker.sh spark://spark-master:7077 && tail -f /dev/null
       "
 
@@ -335,4 +347,6 @@ volumes:
   spark-ivy-cache:
     driver: local
   spark-pip-cache:
+    driver: local
+  spark-python-libs:
     driver: local
