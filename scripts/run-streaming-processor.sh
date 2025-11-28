@@ -83,11 +83,18 @@ fi
 # 3. Verificar metadata en HDFS
 print_info "Verificando metadata en HDFS..."
 if ! docker exec namenode hadoop fs -test -d /data/content_features/movies_features 2>/dev/null; then
-    print_error "Movies features no encontrados en HDFS"
-    echo "   Ejecuta primero la Fase 4 (feature engineering)"
-    exit 1
+    print_info "Movies features no encontrados en HDFS. Ejecutando Fase 4 (Feature Engineering)..."
+    
+    # Ejecutar build_features.py desde la raíz del proyecto para asegurar rutas correctas
+    if (cd "$ROOT_DIR" && ./scripts/recsys-utils.sh spark-submit movies/src/features/build_features.py); then
+        print_success "Fase 4 completada: Features generados correctamente"
+    else
+        print_error "Error al ejecutar la Fase 4 (build_features.py)"
+        exit 1
+    fi
+else
+    print_success "Metadata disponible en HDFS"
 fi
-print_success "Metadata disponible en HDFS"
 
 # 4. Crear directorios en HDFS
 print_info "Creando directorios de salida en HDFS..."
