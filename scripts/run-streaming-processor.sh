@@ -83,7 +83,21 @@ fi
 # 3. Verificar metadata en HDFS
 print_info "Verificando metadata en HDFS..."
 if ! docker exec namenode hadoop fs -test -d /data/content_features/movies_features 2>/dev/null; then
-    print_info "Movies features no encontrados en HDFS. Ejecutando Fase 4 (Feature Engineering)..."
+    print_info "Movies features no encontrados en HDFS. Preparando generación..."
+
+    # Verificar si existen los datos base en Parquet (/data/movielens_parquet)
+    # Si no existen, ejecutar ETL (etl_movielens.py)
+    if ! docker exec namenode hadoop fs -test -d /data/movielens_parquet 2>/dev/null; then
+        print_info "Datos base Parquet no encontrados. Ejecutando ETL (CSV -> Parquet)..."
+        if (cd "$ROOT_DIR" && ./scripts/recsys-utils.sh spark-submit movies/src/etl/etl_movielens.py); then
+             print_success "ETL completado: CSV convertidos a Parquet"
+        else
+             print_error "Error al ejecutar ETL (etl_movielens.py)"
+             exit 1
+        fi
+    fi
+    
+    print_info "Ejecutando Fase 4 (Feature Engineering)..."
     
     # Ejecutar build_features.py desde la raíz del proyecto para asegurar rutas correctas
     if (cd "$ROOT_DIR" && ./scripts/recsys-utils.sh spark-submit movies/src/features/build_features.py); then
