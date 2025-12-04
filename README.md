@@ -1,6 +1,7 @@
 # 🎬 Sistema de Recomendación de Películas a Gran Escala
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 ## 📋 Descripción
 
 Sistema inteligente de recomendación de películas diseñado para procesar y analizar millones de valoraciones de usuarios en tiempo real. El proyecto utiliza el reconocido dataset **MovieLens 20M** para ofrecer recomendaciones personalizadas basadas en los gustos y preferencias de los usuarios.
@@ -10,19 +11,22 @@ Sistema inteligente de recomendación de películas diseñado para procesar y an
 [![Estado](https://img.shields.io/badge/Fase-3%20%7C%20ETL%20Completado-success)](docs/FASE3_RESUMEN.md)
 [![Datos](https://img.shields.io/badge/Datos-32.2M%20registros-blue)](docs/FASE2_RESUMEN.md)
 [![Parquet](https://img.shields.io/badge/Parquet-293%20MB-orange)](docs/FASE3_RESUMEN.md)
+=======
+## 📋 Descripción
+>>>>>>> 8da1009 (Actualiza el README.md)
 
-### 📋 Descripción del Sistema
+Sistema inteligente de recomendación de películas diseñado para procesar y analizar millones de valoraciones de usuarios en tiempo real. El proyecto utiliza el reconocido dataset **MovieLens 20M** para ofrecer recomendaciones personalizadas basadas en los gustos y preferencias de los usuarios.
 
-Sistema completo de recomendación de películas a gran escala usando el dataset **MovieLens 20M**, implementado con:
+## 🎯 ¿Qué hace este sistema?
 
-- **Dataset**: 32.2M registros (20M ratings, 27K películas, 465K tags, 11.7M genome scores)
-- **Almacenamiento**: HDFS distribuido con formato Parquet optimizado (67% reducción vs CSV)
-- **Procesamiento**: Apache Spark 3.4.1 con ALS (collaborative filtering) + features de contenido
-- **Streaming**: Kafka para ratings sintéticos en tiempo real (miles/segundo)
-- **Orchestration**: Docker Compose con 9 servicios integrados
+- **Recomienda películas** personalizadas a cada usuario basándose en su historial de valoraciones y las preferencias de usuarios similares
+- **Procesa datos en tiempo real** para actualizar las recomendaciones instantáneamente cuando un usuario califica una nueva película
+- **Analiza tendencias** para identificar las películas más populares y las preferencias por género
+- **Visualiza métricas** a través de un dashboard interactivo que muestra estadísticas en vivo
 
-### ✅ Estado del Proyecto
+## 📊 Dataset
 
+<<<<<<< HEAD
 | Fase | Estado | Descripción | Documentación |
 |------|--------|-------------|---------------|
 | **Fase 1** | ✅ COMPLETADA | Verificación infraestructura Docker | [FASE1_RESUMEN.md](docs/FASE1_RESUMEN.md) |
@@ -101,6 +105,52 @@ Una vez iniciado el sistema, puedes acceder a:
 
 ## 📚 Documentación
 
+=======
+El sistema trabaja con aproximadamente **32 millones de registros** que incluyen:
+
+- 🎥 ~27,000 películas con información de géneros
+- ⭐ ~20 millones de valoraciones de usuarios
+- 🏷️ ~465,000 etiquetas descriptivas
+- 🧬 ~11.7 millones de puntuaciones de similitud entre películas
+
+## ✨ Características Principales
+
+| Característica | Descripción |
+|----------------|-------------|
+| **Recomendaciones Personalizadas** | Sugiere películas basándose en tus gustos y los de usuarios similares |
+| **Procesamiento en Tiempo Real** | Las recomendaciones se actualizan instantáneamente |
+| **Dashboard Interactivo** | Visualiza métricas y estadísticas del sistema en vivo |
+| **API REST** | Accede a las recomendaciones desde cualquier aplicación |
+| **Escalabilidad** | Diseñado para manejar millones de usuarios y valoraciones |
+
+## 🌐 Interfaces Disponibles
+
+Una vez iniciado el sistema, puedes acceder a:
+
+| Interfaz | URL | Descripción |
+|----------|-----|-------------|
+| Dashboard | http://localhost:8501 | Panel de control con métricas en tiempo real |
+| API | http://localhost:8000 | Endpoints para obtener recomendaciones |
+| Monitoreo Spark | http://localhost:8080 | Estado del procesamiento |
+| Monitoreo Almacenamiento | http://localhost:9870 | Estado del sistema de archivos |
+
+## 📁 Estructura del Proyecto
+
+```
+📦 Recomendacion-Gran-Escala
+├── 📂 Dataset/          → Datos de MovieLens (películas, valoraciones, etiquetas)
+├── 📂 movies/           → Código principal del sistema
+│   ├── 📂 api/          → Servicio de recomendaciones (REST API)
+│   ├── 📂 dashboard/    → Panel de visualización de métricas
+│   └── 📂 src/          → Lógica de procesamiento y modelos
+├── 📂 scripts/          → Scripts de gestión y despliegue
+├── 📂 docs/             → Documentación detallada
+└── 📂 tests/            → Pruebas del sistema
+```
+
+## 📚 Documentación
+
+>>>>>>> 8da1009 (Actualiza el README.md)
 Para más información, consulta:
 
 - **[Documentación Técnica](docs/DOCUMENTACION.md)** - Detalles de arquitectura y componentes
