@@ -151,7 +151,13 @@ shared
 electivo
 eda
 <<<<<<< HEAD
+<<<<<<< HEAD
 >>>>>>> 80056d5 (feat: Actualizar .gitignore y docker-compose para incluir caché de Ivy y optimizar pruebas de integración de Spark con Kafka)
 =======
 shared
 >>>>>>> 6d8dca8 (feat: Implement ALS model training pipeline and evaluation)
+=======
+shared
+.venv
+.venv-producer
+>>>>>>> 3c9a69c (eliminando archivos innecesarios)
