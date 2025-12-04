@@ -142,30 +142,10 @@ stats/
 *.out
 *.fdb_latexmk
 
+# Directorios del proyecto a ignorar
 electivo/spark_env
-<<<<<<< HEAD
-<<<<<<< HEAD
-
-eda/
-shared
-=======
-electivo
-eda
-<<<<<<< HEAD
-<<<<<<< HEAD
->>>>>>> 80056d5 (feat: Actualizar .gitignore y docker-compose para incluir caché de Ivy y optimizar pruebas de integración de Spark con Kafka)
-=======
-shared
->>>>>>> 6d8dca8 (feat: Implement ALS model training pipeline and evaluation)
-=======
-shared
-.venv
-.venv-producer
->>>>>>> 3c9a69c (eliminando archivos innecesarios)
-=======
 electivo
 eda
 shared
 .venv
 .venv-producer
->>>>>>> 8da1009321c842558765ab88f88fed5a76d618fa

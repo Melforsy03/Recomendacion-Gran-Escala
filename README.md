@@ -41,22 +41,6 @@ Una vez iniciado el sistema, puedes acceder a:
 | Monitoreo Spark | http://localhost:8080 | Estado del procesamiento |
 | Monitoreo Almacenamiento | http://localhost:9870 | Estado del sistema de archivos |
 
-<<<<<<< HEAD
-## 🚀 Inicio Rápido
-
-```bash
-# 1. Iniciar todos los servicios
-./scripts/start-system.sh
-
-# 2. Verificar que todo funciona
-./scripts/check_system_status.sh
-
-# 3. Abrir el dashboard en tu navegador
-# http://localhost:8501
-```
-
-=======
->>>>>>> 8da1009321c842558765ab88f88fed5a76d618fa
 ## 📁 Estructura del Proyecto
 
 ```
