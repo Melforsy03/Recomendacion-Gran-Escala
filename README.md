@@ -41,6 +41,7 @@ Una vez iniciado el sistema, puedes acceder a:
 | Monitoreo Spark | http://localhost:8080 | Estado del procesamiento |
 | Monitoreo Almacenamiento | http://localhost:9870 | Estado del sistema de archivos |
 
+<<<<<<< HEAD
 ## 🚀 Inicio Rápido
 
 ```bash
@@ -54,6 +55,8 @@ Una vez iniciado el sistema, puedes acceder a:
 # http://localhost:8501
 ```
 
+=======
+>>>>>>> 8da1009321c842558765ab88f88fed5a76d618fa
 ## 📁 Estructura del Proyecto
 
 ```

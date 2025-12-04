@@ -144,6 +144,7 @@ stats/
 
 electivo/spark_env
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 eda/
 shared
@@ -161,3 +162,10 @@ shared
 .venv
 .venv-producer
 >>>>>>> 3c9a69c (eliminando archivos innecesarios)
+=======
+electivo
+eda
+shared
+.venv
+.venv-producer
+>>>>>>> 8da1009321c842558765ab88f88fed5a76d618fa
