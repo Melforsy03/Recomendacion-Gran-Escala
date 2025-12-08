@@ -49,6 +49,18 @@ ENV/
 env.bak/
 venv.bak/
 
+# 🤖 Modelos Entrenados (demasiado grandes para Git)
+movies/trained_models/als/*
+movies/trained_models/item_cf/*
+movies/trained_models/content_based/*
+!movies/trained_models/als/.gitkeep
+!movies/trained_models/item_cf/.gitkeep
+!movies/trained_models/content_based/.gitkeep
+!movies/trained_models/README.md
+
+# 📊 Notebooks de entrenamiento (checkpoints)
+cloud/*.ipynb_checkpoints/
+
 # 📊 Datos y Logs
 *.log
 logs/
