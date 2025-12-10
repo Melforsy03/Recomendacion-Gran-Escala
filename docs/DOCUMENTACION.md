@@ -1,10 +1,10 @@
 # 📚 Documentación Técnica - Sistema de Recomendación a Gran Escala
 
 **Sistema de Recomendación de Películas en Gran Escala**  
-**Versión:** 1.0  
+**Versión:** 2.0 (Modelo Híbrido)  
 **Última actualización:** Diciembre 2025  
 **Repositorio:** Melforsy03/Recomendacion-Gran-Escala  
-**Branch:** dev_abraham
+**Branch:** main
 
 ---
 
@@ -13,16 +13,15 @@
 1. [Descripción General](#1-descripción-general)
 2. [Arquitectura del Sistema](#2-arquitectura-del-sistema)
 3. [Componentes](#3-componentes)
-4. [Configuración](#4-configuración)
+4. [Sistema de Recomendación Híbrido](#4-sistema-de-recomendación-híbrido)
 5. [API REST](#5-api-rest)
-6. [Flujo de Datos](#6-flujo-de-datos)
+6. [Configuración](#6-configuración)
 7. [Scripts Disponibles](#7-scripts-disponibles)
 8. [Interfaces Web](#8-interfaces-web)
 9. [Persistencia y Volúmenes](#9-persistencia-y-volúmenes)
 10. [Fair Scheduler](#10-fair-scheduler)
 11. [Consumo de Recursos](#11-consumo-de-recursos)
-12. [Seguridad](#12-seguridad)
-13. [Estructura del Proyecto](#13-estructura-del-proyecto)
+12. [Estructura del Proyecto](#12-estructura-del-proyecto)
 
 ---
 
@@ -32,16 +31,18 @@
 
 Sistema de recomendación de películas a gran escala que implementa:
 
-- **Procesamiento Batch:** ETL, entrenamiento de modelos ALS
+- **Modelo Híbrido:** Combina ALS + Item-CF + Content-Based con estrategias configurables
+- **Procesamiento Batch:** ETL, entrenamiento de modelos
 - **Procesamiento Streaming:** Agregaciones en tiempo real con ventanas
 - **Visualización:** Dashboard interactivo con métricas en tiempo real
-- **API REST:** Acceso programático a las métricas y recomendaciones
+- **API REST:** Acceso programático a recomendaciones y métricas
 
 ### 1.2. Dataset
 
 Utiliza el dataset **MovieLens** con aproximadamente:
 
-- ~32 millones de registros totales
+- ~20 millones de ratings
+- ~27,000 películas
 - 6 archivos CSV: movies, ratings, tags, genome_tags, genome_scores, links
 
 ### 1.3. Tecnologías
@@ -50,12 +51,12 @@ Utiliza el dataset **MovieLens** con aproximadamente:
 |------------|------------|---------|
 | Almacenamiento Distribuido | Apache HDFS | 3.2.1 |
 | Gestión de Recursos | Apache YARN | 3.2.1 |
-| Procesamiento | Apache Spark | 3.4.1 |
+| Procesamiento | Apache Spark | 3.5.3 |
 | Mensajería | Apache Kafka | 3.5 |
-| Coordinación | Apache Zookeeper | 3.9 |
 | API | FastAPI | 0.100+ |
 | Dashboard | Streamlit | 1.25+ |
 | Contenedores | Docker | 20.10+ |
+| Java | OpenJDK | 21 |
 
 ---
 
@@ -73,6 +74,19 @@ Utiliza el dataset **MovieLens** con aproximadamente:
                                    │
                                    ▼
 ┌─────────────────────────────────────────────────────────────────────┐
+│                     CAPA DE RECOMENDACIÓN                          │
+├─────────────────────────────────────────────────────────────────────┤
+│                     HybridRecommender                               │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────────┐ │
+│  │     ALS     │  │   Item-CF   │  │      Content-Based         │ │
+│  │ (50% peso)  │  │ (30% peso)  │  │       (20% peso)           │ │
+│  └─────────────┘  └─────────────┘  └─────────────────────────────┘ │
+│                                                                     │
+│  Estrategias: als_heavy | balanced | content_heavy | cold_start    │
+└─────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────┐
 │                        CAPA DE MENSAJERÍA                          │
 ├─────────────────────────────────────────────────────────────────────┤
 │                         Apache Kafka                                │
@@ -82,130 +96,203 @@ Utiliza el dataset **MovieLens** con aproximadamente:
                                    │
                                    ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                     CAPA DE PROCESAMIENTO                          │
-├───────────────────────┬─────────────────────────────────────────────┤
-│  Spark Streaming      │              Spark Batch                    │
-│  - Latent Generator   │              - ETL Pipeline                 │
-│  - Stream Processor   │              - Feature Engineering          │
-│  - Metrics Publisher  │              - ALS Model Training           │
-│                       │              - Batch Analytics              │
-└───────────────────────┴─────────────────────────────────────────────┘
-                                   │
-                                   ▼
-┌─────────────────────────────────────────────────────────────────────┐
 │                     CAPA DE ALMACENAMIENTO                         │
 ├─────────────────────────────────────────────────────────────────────┤
 │                         Apache HDFS                                 │
 │  /data/movielens/csv/      - Datos CSV originales                  │
 │  /data/movielens_parquet/  - Datos en formato Parquet              │
-│  /data/content_features/   - Features de contenido                  │
-│  /models/als/              - Modelo ALS entrenado                   │
 │  /streams/ratings/         - Agregaciones de streaming              │
-│  /outputs/analytics/       - Resultados de análisis batch           │
 │  /checkpoints/             - Checkpoints de Spark Streaming         │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.2. Flujo de Datos Completo
+### 2.2. Flujo de Recomendaciones
 
 ```
-┌─────────────────────┐
-│ Latent Generator    │  (Spark Job)
-│ • Matrix Factoriza. │  → 100 ratings/seg
-│ • Synthetic Ratings │
-└──────────┬──────────┘
-           │
-           ▼
-    ┌─────────────┐
-    │ Kafka Topic │
-    │  "ratings"  │  → 240K+ mensajes
-    └──────┬──────┘
-           │
-           ▼
-┌──────────────────────┐
-│ Streaming Processor  │  (Spark Structured Streaming)
-│ • Tumbling: 1 min    │
-│ • Sliding: 5 min     │
-│ • Agregaciones       │
-│ • Top-N              │
-└──────────┬───────────┘
-           │
-           ├──────────────────────┐
-           │                      │
-           ▼                      ▼
-    ┌─────────────┐      ┌──────────────┐
-    │ HDFS        │      │ Kafka Topic  │
-    │ /streams/*  │      │  "metrics"   │  → 74+ mensajes
-    └─────────────┘      └──────┬───────┘
-                                │
-                                ▼
-                         ┌──────────────┐
-                         │ FastAPI      │
-                         │ Consumer     │
-                         └──────┬───────┘
-                                │
-                                ▼
-                         ┌──────────────┐
-                         │ Streamlit    │
-                         │ Dashboard    │
-                         └──────────────┘
+Usuario → API FastAPI → RecommenderService → HybridRecommender
+                                                    │
+                              ┌─────────────────────┼─────────────────────┐
+                              │                     │                     │
+                              ▼                     ▼                     ▼
+                           ALS Model          Item-CF Model      Content-Based Model
+                              │                     │                     │
+                              └─────────────────────┼─────────────────────┘
+                                                    │
+                                                    ▼
+                                          Score Combination
+                                          (según estrategia)
+                                                    │
+                                                    ▼
+                                          Enriquecimiento
+                                          (título, géneros)
+                                                    │
+                                                    ▼
+                                             Respuesta JSON
 ```
 
 ---
 
 ## 3. Componentes
 
-### 3.1. Infraestructura Docker
+### 3.1. Infraestructura Docker (10 contenedores)
 
 | Contenedor | Imagen | Puertos | Descripción |
 |------------|--------|---------|-------------|
-| `namenode` | bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8 | 9870, 9000 | HDFS NameNode |
-| `datanode` | bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8 | 9864 | HDFS DataNode |
-| `resourcemanager` | bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8 | 8088 | YARN ResourceManager |
-| `nodemanager` | bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8 | 8042 | YARN NodeManager |
+| `namenode` | bde2020/hadoop-namenode | 9870, 9000 | HDFS NameNode |
+| `datanode` | bde2020/hadoop-datanode | 9864 | HDFS DataNode |
+| `resourcemanager` | bde2020/hadoop-resourcemanager | 8088 | YARN ResourceManager |
+| `nodemanager` | bde2020/hadoop-nodemanager | 8042 | YARN NodeManager |
 | `spark-master` | bitnami/spark:3.4.1 | 8080, 7077 | Spark Master |
 | `spark-worker` | bitnami/spark:3.4.1 | 8081 | Spark Worker |
 | `zookeeper` | confluentinc/cp-zookeeper:7.5.0 | 2181 | Zookeeper |
 | `kafka` | confluentinc/cp-kafka:7.5.0 | 9092, 9093 | Kafka Broker |
-| `recs-api` | Custom (FastAPI) | 8000 | API REST |
+| `recs-api` | Custom (FastAPI + PySpark 3.5.3) | 8000 | API de Recomendaciones |
 | `recs-dashboard` | Custom (Streamlit) | 8501 | Dashboard |
 
-### 3.2. Jobs de Spark
+### 3.2. Modelos de Machine Learning
 
-#### Latent Generator (`latent_generator.py`)
-
-- **Función:** Genera ratings sintéticos basados en factorización matricial
-- **Pool:** `generator` (prioridad baja)
-- **Recursos:** 1 core, 512MB RAM
-- **Output:** Topic Kafka `ratings`
-
-#### Streaming Processor (`ratings_stream_processor.py`)
-
-- **Función:** Procesa ratings en tiempo real con ventanas
-- **Pool:** `streaming` (prioridad alta)
-- **Recursos:** 2 cores, 1GB RAM
-- **Ventanas:**
-  - Tumbling: 1 minuto
-  - Sliding: 5 minutos
-- **Output:** HDFS + Topic Kafka `metrics`
-
-#### Batch Analytics (`batch_analytics.py`)
-
-- **Función:** Análisis histórico y trending
-- **Pool:** `batch` (prioridad media)
-- **Recursos:** 2 cores, 1GB RAM
-- **Output:** HDFS `/outputs/analytics/`
-
-### 3.3. ETL Pipeline
-
-1. **etl_movielens.py:** Convierte CSV a Parquet con schemas tipados
-2. **generate_content_features.py:** Genera vectores de features (géneros + genome tags)
+| Modelo | Algoritmo | Uso |
+|--------|-----------|-----|
+| **ALS** | Alternating Least Squares | Filtrado colaborativo matricial |
+| **Item-CF** | Item Collaborative Filtering | Similitud entre películas |
+| **Content-Based** | TF-IDF + Cosine Similarity | Features de géneros y tags |
+| **Hybrid** | Combinación ponderada | Mezcla configurable de los 3 |
 
 ---
 
-## 4. Configuración
+## 4. Sistema de Recomendación Híbrido
 
-### 4.1. Archivos de Configuración
+### 4.1. Estrategias Disponibles
+
+| Estrategia | ALS | Item-CF | Content | Uso Recomendado |
+|------------|-----|---------|---------|-----------------|
+| `als_heavy` | 70% | 20% | 10% | Usuarios con mucho historial |
+| `balanced` | 50% | 30% | 20% | Uso general (por defecto) |
+| `content_heavy` | 30% | 20% | 50% | Usuarios con poco historial |
+| `cold_start` | 0% | 30% | 70% | Usuarios nuevos sin historial |
+
+### 4.2. Estructura de Modelos
+
+```
+movies/trained_models/
+├── als/
+│   └── model_latest/
+│       ├── spark_model/      # Modelo Spark MLlib
+│       └── metadata.json     # Métricas y parámetros
+├── item_cf/
+│   └── model_latest/
+│       └── similarity_matrix/
+├── content_based/
+│   └── model_latest/
+│       └── movie_features/
+└── hybrid/
+    └── model_latest/
+        └── strategies_config.json
+```
+
+### 4.3. Métricas del Modelo ALS
+
+```json
+{
+  "metrics": {
+    "rmse": 0.8234,
+    "mae": 0.6431,
+    "mse": 0.6780,
+    "r2": 0.7845
+  },
+  "parameters": {
+    "rank": 20,
+    "maxIter": 10,
+    "regParam": 0.1
+  }
+}
+```
+
+---
+
+## 5. API REST
+
+### 5.1. Endpoints de Recomendaciones
+
+#### Health Check
+
+```http
+GET /recommendations/health
+```
+
+**Respuesta:**
+```json
+{
+  "status": "healthy",
+  "model_loaded": true,
+  "model_version": "hybrid_v1",
+  "strategy": "balanced",
+  "models": {
+    "als": true,
+    "item_cf": true,
+    "content_based": true
+  },
+  "cache_stats": {
+    "size": 42,
+    "max_size": 1000,
+    "ttl_hours": 1
+  },
+  "timestamp": "2025-12-10T21:00:00Z"
+}
+```
+
+#### Obtener Recomendaciones
+
+```http
+GET /recommendations/recommend/{user_id}?n=10&strategy=balanced
+```
+
+**Parámetros:**
+- `user_id`: ID del usuario (requerido)
+- `n`: Número de recomendaciones (default: 10, max: 100)
+- `strategy`: Estrategia híbrida (als_heavy, balanced, content_heavy, cold_start)
+- `use_cache`: Usar cache (default: true)
+
+**Respuesta:**
+```json
+{
+  "user_id": 123,
+  "recommendations": [
+    {
+      "movie_id": 126219,
+      "title": "Marihuana (1936)",
+      "genres": ["Documentary", "Drama"],
+      "score": 3.09,
+      "rank": 1
+    }
+  ],
+  "strategy": "balanced",
+  "model_version": "hybrid_v1",
+  "source": "model",
+  "timestamp": "2025-12-10T21:00:00Z"
+}
+```
+
+### 5.2. Endpoints de Métricas
+
+| Endpoint | Método | Descripción |
+|----------|--------|-------------|
+| `/metrics/health` | GET | Estado del sistema de métricas |
+| `/metrics/summary` | GET | Resumen de métricas de streaming |
+| `/metrics/topn?limit=10` | GET | Top-N películas más vistas |
+| `/metrics/genres` | GET | Métricas por género |
+| `/metrics/history?limit=50` | GET | Historial de métricas |
+
+### 5.3. Documentación Interactiva
+
+- **Swagger UI:** http://localhost:8000/docs
+- **ReDoc:** http://localhost:8000/redoc
+
+---
+
+## 6. Configuración
+
+### 6.1. Archivos de Configuración
 
 | Archivo | Ubicación | Descripción |
 |---------|-----------|-------------|
@@ -215,173 +302,24 @@ Utiliza el dataset **MovieLens** con aproximadamente:
 | `hdfs-site.xml` | hadoop-conf/ | Configuración HDFS |
 | `yarn-site.xml` | hadoop-conf/ | Configuración YARN |
 
-### 4.2. Variables de Entorno Principales
+### 6.2. Configuración del API (PySpark 3.5.3 + Java 21)
 
-#### Spark Worker
-
-```yaml
-SPARK_MODE: worker
-SPARK_MASTER_URL: spark://spark-master:7077
-SPARK_WORKER_MEMORY: 4G
-SPARK_WORKER_CORES: 4
+```dockerfile
+# Dockerfile del API
+ENV _JAVA_OPTIONS="--add-opens=java.base/sun.nio.ch=ALL-UNNAMED \
+                   --add-opens=java.base/java.nio=ALL-UNNAMED \
+                   --add-opens=java.base/java.lang=ALL-UNNAMED"
 ```
 
-#### Kafka
+### 6.3. Cache de Recomendaciones
 
-```yaml
-KAFKA_BROKER_ID: 1
-KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9093
+```python
+class RecommenderConfig:
+    CACHE_MAX_SIZE = 1000      # Máximo entradas en cache
+    CACHE_TTL_HOURS = 1        # Tiempo de vida del cache
+    TOP_POPULAR_N = 100        # Películas populares para fallback
+    DEFAULT_STRATEGY = "balanced"
 ```
-
-### 4.3. Configuración de Spark Submit
-
-```bash
-spark-submit \
-  --master spark://spark-master:7077 \
-  --deploy-mode client \
-  --conf spark.scheduler.mode=FAIR \
-  --conf spark.scheduler.allocation.file=/opt/spark/conf/fairscheduler.xml \
-  --conf spark.scheduler.pool=<pool_name> \
-  --executor-memory 1G \
-  --total-executor-cores 2 \
-  <script.py>
-```
-
----
-
-## 5. API REST
-
-### 5.1. Endpoints Disponibles
-
-#### Health Check
-
-```http
-GET /metrics/health
-```
-
-**Response:**
-
-```json
-{
-  "status": "healthy",
-  "last_update": "2025-12-03T10:00:00.000Z",
-  "metrics_available": true
-}
-```
-
-#### Resumen de Métricas
-
-```http
-GET /metrics/summary
-```
-
-**Response:**
-
-```json
-{
-  "window_start": "2025-12-03T09:59:00.000Z",
-  "window_end": "2025-12-03T10:00:00.000Z",
-  "window_type": "tumbling_1min",
-  "total_ratings": 6000,
-  "avg_rating": 3.50,
-  "p50_rating": 3.5,
-  "p95_rating": 4.5,
-  "timestamp": "2025-12-03T10:00:24.000Z",
-  "last_update": "2025-12-03T10:00:24.000Z"
-}
-```
-
-#### Top-N Películas
-
-```http
-GET /metrics/topn?limit=10
-```
-
-**Response:**
-
-```json
-{
-  "window_start": "2025-12-03T09:59:00.000Z",
-  "window_end": "2025-12-03T10:00:00.000Z",
-  "movies": [32518, 103135, 68435, 87191, 74226],
-  "timestamp": "2025-12-03T10:00:24.000Z",
-  "count": 5
-}
-```
-
-#### Métricas por Género
-
-```http
-GET /metrics/genres
-```
-
-**Response:**
-
-```json
-{
-  "window_start": "2025-12-03T09:59:00.000Z",
-  "window_end": "2025-12-03T10:00:00.000Z",
-  "genres": {
-    "Action": {"count": 150, "avg_rating": 3.8},
-    "Comedy": {"count": 200, "avg_rating": 3.5}
-  },
-  "timestamp": "2025-12-03T10:00:24.000Z"
-}
-```
-
-#### Historial de Métricas
-
-```http
-GET /metrics/history?limit=50
-```
-
-**Response:**
-
-```json
-{
-  "count": 50,
-  "history": [
-    {"type": "summary", "timestamp": "...", "data": {...}},
-    {"type": "topn", "timestamp": "...", "data": {...}}
-  ]
-}
-```
-
-### 5.2. Documentación Interactiva
-
-- **Swagger UI:** http://localhost:8000/docs
-- **ReDoc:** http://localhost:8000/redoc
-
----
-
-## 6. Flujo de Datos
-
-### 6.1. Pipeline Batch (Primera Ejecución)
-
-```
-CSV Files → HDFS → ETL (Parquet) → Features → HDFS
-```
-
-**Fases:**
-
-1. **Fase 3:** ETL CSV → Parquet
-2. **Fase 4:** Feature Engineering
-
-### 6.2. Pipeline Streaming (Ejecución Continua)
-
-```
-Latent Generator → Kafka (ratings) → Stream Processor → Kafka (metrics) → API → Dashboard
-                                                     ↓
-                                                   HDFS
-```
-
-**Componentes:**
-
-1. **Latent Generator:** Produce ratings sintéticos
-2. **Streaming Processor:** Consume, agrega, publica métricas
-3. **API Consumer:** Consume métricas de Kafka
-4. **Dashboard:** Visualiza métricas en tiempo real
 
 ---
 
@@ -395,32 +333,29 @@ Latent Generator → Kafka (ratings) → Stream Processor → Kafka (metrics) �
 | `run-latent-generator.sh` | Inicia generador de ratings | `./scripts/run-latent-generator.sh 100` |
 | `run-streaming-processor.sh` | Inicia procesador streaming | `./scripts/run-streaming-processor.sh` |
 | `run-batch-analytics.sh` | Ejecuta analytics batch | `./scripts/run-batch-analytics.sh` |
-| `quickstart.sh` | Inicio rápido completo | `./scripts/quickstart.sh` |
 
-### 7.2. Scripts de Verificación
+### 7.2. Scripts de Entrenamiento
+
+| Script | Descripción | Uso |
+|--------|-------------|-----|
+| `train_all_models.sh` | Entrena todos los modelos | `./scripts/train_all_models.sh` |
+| `train_all_models.sh --force` | Re-entrena todos | `./scripts/train_all_models.sh --force` |
+
+### 7.3. Scripts de Verificación
 
 | Script | Descripción | Uso |
 |--------|-------------|-----|
 | `check-spark-resources.sh` | Ver recursos de Spark | `./scripts/check-spark-resources.sh` |
 | `check-status.sh` | Estado de servicios | `./scripts/check-status.sh` |
 | `run-all-tests.sh` | Suite completa de tests | `./scripts/run-all-tests.sh` |
-| `verify_fase9_system.sh` | Verificación completa | `./scripts/verify_fase9_system.sh` |
 
-### 7.3. Scripts de Mantenimiento
+### 7.4. Scripts de Mantenimiento
 
 | Script | Descripción | Uso |
 |--------|-------------|-----|
 | `stop-system.sh` | Detener todo el sistema | `./scripts/stop-system.sh` |
 | `clean-checkpoints.sh` | Limpiar checkpoints | `./scripts/clean-checkpoints.sh all` |
 | `spark-job-manager.sh` | Gestión de jobs Spark | `./scripts/spark-job-manager.sh list` |
-| `instalar-dependencias-spark.sh` | Instalar deps Python | `./scripts/instalar-dependencias-spark.sh` |
-
-### 7.4. Scripts de Utilidad
-
-| Script | Descripción | Uso |
-|--------|-------------|-----|
-| `recsys-utils.sh` | Utilidades generales HDFS/Kafka | `source ./scripts/recsys-utils.sh` |
-| `verify_csv_integrity.py` | Verificar integridad CSV | `spark-submit scripts/verify_csv_integrity.py` |
 
 ---
 
@@ -430,12 +365,11 @@ Latent Generator → Kafka (ratings) → Stream Processor → Kafka (metrics) �
 |----------|-----|--------|-------------|
 | Dashboard Streamlit | `localhost:8501` | 8501 | Visualizaciones en tiempo real |
 | API Docs (Swagger) | `localhost:8000/docs` | 8000 | Documentación interactiva API |
-| API Health | `localhost:8000/metrics/health` | 8000 | Estado del sistema |
+| API Health | `localhost:8000/recommendations/health` | 8000 | Estado del sistema |
 | Spark Master UI | `localhost:8080` | 8080 | Jobs y recursos Spark |
 | Spark Worker UI | `localhost:8081` | 8081 | Estado del worker |
 | HDFS NameNode | `localhost:9870` | 9870 | Explorador de archivos |
 | YARN ResourceManager | `localhost:8088` | 8088 | Gestor de recursos |
-| YARN NodeManager | `localhost:8042` | 8042 | Estado del node |
 
 ---
 
@@ -443,33 +377,23 @@ Latent Generator → Kafka (ratings) → Stream Processor → Kafka (metrics) �
 
 ### 9.1. Volúmenes Docker
 
-Los siguientes datos persisten entre reinicios:
-
 | Volumen | Contenedor | Descripción |
 |---------|------------|-------------|
 | `namenode_data` | namenode | Metadatos HDFS |
 | `datanode_data` | datanode | Datos HDFS |
 | `spark_master_data` | spark-master | Checkpoints Spark |
-| `spark_worker_data` | spark-worker | Logs de trabajo |
 | `kafka_data` | kafka | Datos de topics |
 | `zookeeper_data` | zookeeper | Estado del cluster |
-| `spark-ivy-cache` | spark-* | Caché de dependencias |
-| `spark-pip-cache` | spark-* | Caché de paquetes Python |
 
-### 9.2. Estructura HDFS
+### 9.2. Volúmenes del API
 
-```
-/
-├── data/
-│   ├── movielens/
-│   │   └── csv/           # Datos CSV originales
-│   ├── movielens_parquet/ # Datos en Parquet
-│   └── content_features/  # Features de películas
-├── streams/
-│   └── ratings/           # Agregaciones de streaming
-├── outputs/
-│   └── analytics/         # Resultados batch
-└── checkpoints/           # Checkpoints Streaming
+```yaml
+volumes:
+  - ./movies/trained_models:/app/trained_models:ro
+  - ./Dataset/movie.csv:/app/movies_metadata.csv:ro
+  - ./movies/src:/app/movies/src:ro
+  - ./movies/api/services:/app/services:ro
+  - ./movies/api/routes:/app/routes:ro
 ```
 
 ---
@@ -479,77 +403,35 @@ Los siguientes datos persisten entre reinicios:
 ### 10.1. Configuración de Pools
 
 ```xml
-<?xml version="1.0"?>
-<allocations>
-  <!-- Pool para Streaming Processor - Prioridad ALTA -->
-  <pool name="streaming">
-    <schedulingMode>FAIR</schedulingMode>
-    <weight>2</weight>
-    <minShare>1</minShare>
-  </pool>
+<pool name="streaming">
+  <weight>2</weight>        <!-- Prioridad ALTA -->
+  <minShare>1</minShare>
+</pool>
 
-  <!-- Pool para Batch Analytics - Prioridad MEDIA -->
-  <pool name="batch">
-    <schedulingMode>FAIR</schedulingMode>
-    <weight>1</weight>
-    <minShare>1</minShare>
-  </pool>
+<pool name="batch">
+  <weight>1</weight>        <!-- Prioridad MEDIA -->
+  <minShare>1</minShare>
+</pool>
 
-  <!-- Pool para Latent Generator - Prioridad BAJA -->
-  <pool name="generator">
-    <schedulingMode>FAIR</schedulingMode>
-    <weight>1</weight>
-    <minShare>1</minShare>
-  </pool>
-
-  <!-- Pool por defecto -->
-  <pool name="default">
-    <schedulingMode>FAIR</schedulingMode>
-    <weight>1</weight>
-    <minShare>0</minShare>
-  </pool>
-</allocations>
+<pool name="generator">
+  <weight>1</weight>        <!-- Prioridad BAJA -->
+  <minShare>1</minShare>
+</pool>
 ```
 
 ### 10.2. Distribución de Recursos
 
-```
-Worker Total: 4 cores, 4GB RAM
-
-┌─────────────┬─────────┬────────┬────────────────┐
-│ Pool        │ Cores   │ RAM    │ Prioridad      │
-├─────────────┼─────────┼────────┼────────────────┤
-│ streaming   │ 2 cores │ 1GB    │ ALTA (peso 2)  │
-│ batch       │ 2 cores │ 1GB    │ MEDIA (peso 1) │
-│ generator   │ 1 core  │ 512MB  │ BAJA (peso 1)  │
-└─────────────┴─────────┴────────┴────────────────┘
-```
-
-### 10.3. Verificación
-
-```bash
-# Verificar configuración en contenedores
-docker exec spark-master cat /opt/spark/conf/fairscheduler.xml
-docker exec spark-worker cat /opt/spark/conf/fairscheduler.xml
-```
+| Pool | Cores | RAM | Prioridad |
+|------|-------|-----|-----------|
+| streaming | 2 | 1GB | ALTA (peso 2) |
+| batch | 2 | 1GB | MEDIA (peso 1) |
+| generator | 1 | 512MB | BAJA (peso 1) |
 
 ---
 
 ## 11. Consumo de Recursos
 
-### 11.1. Recursos por Servicio
-
-| Servicio | CPU | RAM | Descripción |
-|----------|-----|-----|-------------|
-| HDFS (namenode + datanode) | 0.5 cores | 2GB | Almacenamiento distribuido |
-| YARN (RM + NM) | 0.5 cores | 2GB | Gestión de recursos |
-| Spark Master | 0.5 cores | 512MB | Coordinador Spark |
-| Spark Worker | 4-6 cores | 4GB | Ejecutor de trabajos |
-| Kafka + Zookeeper | 1 core | 2GB | Mensajería |
-| API + Dashboard | 0.5 cores | 1GB | Visualización |
-| **TOTAL** | **~8-10 cores** | **~12GB** | |
-
-### 11.2. Requisitos Mínimos
+### 11.1. Requisitos del Sistema
 
 | Recurso | Mínimo | Recomendado |
 |---------|--------|-------------|
@@ -557,41 +439,20 @@ docker exec spark-worker cat /opt/spark/conf/fairscheduler.xml
 | CPU | 4 cores | 6-8 cores |
 | Disco | 20 GB | 50+ GB |
 
-### 11.3. Métricas de Rendimiento
+### 11.2. Distribución por Servicio
 
-| Componente | Métrica | Valor Esperado |
-|------------|---------|----------------|
-| Latent Generator | Throughput | ~10-20 ratings/segundo |
-| Streaming Processor | Latencia | <1 segundo por batch |
-| Streaming Processor | Throughput | 100+ ratings/segundo |
-| Batch Analytics | Duración | 30-60 segundos |
-| Dashboard | Actualización | Cada 5 segundos |
-
----
-
-## 12. Seguridad
-
-### 12.1. Estado Actual
-
-⚠️ **Este sistema es para desarrollo/demostración.**
-
-- Sin autenticación en servicios
-- Sin encriptación de datos
-- Puertos expuestos sin firewall
-
-### 12.2. Recomendaciones para Producción
-
-- [ ] Implementar autenticación en API
-- [ ] Habilitar SSL/TLS en todas las comunicaciones
-- [ ] Configurar Kerberos para Hadoop
-- [ ] Implementar network policies
-- [ ] Usar secrets management (Vault, etc.)
-- [ ] Configurar firewalls y ACLs
-- [ ] Habilitar auditoría y logging
+| Servicio | CPU | RAM |
+|----------|-----|-----|
+| HDFS (namenode + datanode) | 0.5 cores | 2GB |
+| YARN (RM + NM) | 0.5 cores | 2GB |
+| Spark Master + Worker | 4-6 cores | 4GB |
+| Kafka + Zookeeper | 1 core | 2GB |
+| API + Dashboard | 0.5 cores | 2GB |
+| **TOTAL** | **~8-10 cores** | **~12GB** |
 
 ---
 
-## 13. Estructura del Proyecto
+## 12. Estructura del Proyecto
 
 ```
 Recomendacion-Gran-Escala/
@@ -601,8 +462,8 @@ Recomendacion-Gran-Escala/
 ├── README.md                   # Documentación principal
 │
 ├── Dataset/                    # Datos MovieLens
-│   ├── movie.csv
-│   ├── rating.csv
+│   ├── movie.csv               # 27,278 películas
+│   ├── rating.csv              # ~20M ratings
 │   ├── tag.csv
 │   ├── genome_tags.csv
 │   ├── genome_scores.csv
@@ -613,50 +474,43 @@ Recomendacion-Gran-Escala/
 │   ├── GUIA_DESPLIEGUE_INICIAL_UNICO.md
 │   └── GUIA_DESPLIEGUE_REGULAR.md
 │
-├── hadoop-conf/                # Configuración Hadoop
-│   ├── core-site.xml
-│   ├── hdfs-site.xml
-│   └── yarn-site.xml
-│
-├── movies/                     # Código principal
+├── movies/
+│   ├── trained_models/         # Modelos entrenados
+│   │   ├── als/
+│   │   ├── item_cf/
+│   │   ├── content_based/
+│   │   └── hybrid/
 │   ├── api/                    # API FastAPI
 │   │   ├── Dockerfile
-│   │   └── main.py
+│   │   ├── routes/
+│   │   └── services/
 │   ├── dashboard/              # Dashboard Streamlit
-│   │   ├── Dockerfile
-│   │   └── app.py
 │   └── src/
-│       ├── etl/                # Pipeline ETL
-│       ├── features/           # Feature Engineering
-│       ├── models/             # Modelos ML
-│       └── streaming/          # Procesamiento Streaming
+│       ├── etl/
+│       ├── features/
+│       ├── recommendation/     # Modelos de recomendación
+│       │   └── models/
+│       │       ├── als_model.py
+│       │       ├── item_cf.py
+│       │       ├── content_based.py
+│       │       └── hybrid_recommender.py
+│       └── streaming/
 │
 ├── scripts/                    # Scripts de gestión
 │   ├── start-system.sh
 │   ├── stop-system.sh
-│   ├── run-latent-generator.sh
-│   ├── run-streaming-processor.sh
-│   ├── run-batch-analytics.sh
-│   ├── check-spark-resources.sh
-│   ├── spark-job-manager.sh
+│   ├── train_all_models.sh
 │   └── ...
 │
 └── tests/                      # Scripts de prueba
-    ├── test-connectivity.sh
-    ├── test-hdfs.sh
-    ├── test-kafka.sh
-    └── ...
 ```
 
 ---
 
 ## Documentación Adicional
 
-Para más información, consultar:
-
 - **Primera Ejecución:** `docs/GUIA_DESPLIEGUE_INICIAL_UNICO.md`
 - **Ejecuciones Regulares:** `docs/GUIA_DESPLIEGUE_REGULAR.md`
-- **Comandos Rápidos:** `COMANDOS_RAPIDOS.md` (raíz del proyecto)
 
 ---
 

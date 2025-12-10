@@ -1,7 +1,7 @@
 # 🚀 Guía de Despliegue Inicial - Primera Ejecución
 
 **Sistema de Recomendación de Películas en Gran Escala**  
-**Versión:** 1.0  
+**Versión:** 2.0 (Modelo Híbrido)  
 **Última actualización:** Diciembre 2025
 
 ---
@@ -21,10 +21,11 @@
 6. [Paso 5: Crear Estructura HDFS](#paso-5-crear-estructura-hdfs)
 7. [Paso 6: Cargar Datos CSV](#paso-6-cargar-datos-csv)
 8. [Paso 7: Ejecutar Pipeline ETL](#paso-7-ejecutar-pipeline-etl)
-9. [Paso 8: Configurar Kafka](#paso-8-configurar-kafka)
-10. [Paso 9: Iniciar Pipeline de Streaming](#paso-9-iniciar-pipeline-de-streaming)
-11. [Paso 10: Verificar Sistema Completo](#paso-10-verificar-sistema-completo)
-12. [Checklist Final](#checklist-final)
+9. [Paso 8: Entrenar Modelos de Recomendación](#paso-8-entrenar-modelos-de-recomendación)
+10. [Paso 9: Configurar Kafka](#paso-9-configurar-kafka)
+11. [Paso 10: Iniciar Pipeline de Streaming](#paso-10-iniciar-pipeline-de-streaming)
+12. [Paso 11: Verificar Sistema Completo](#paso-11-verificar-sistema-completo)
+13. [Checklist Final](#checklist-final)
 
 ---
 
@@ -42,7 +43,8 @@
 
 - **Docker Engine:** 20.10 o superior
 - **Docker Compose:** v2.0 o superior
-- **Python:** 3.8+ (para scripts auxiliares)
+- **Python:** 3.8+ (para scripts auxiliares y entrenamiento)
+- **Java:** OpenJDK 8+ (para PySpark local)
 
 ### Verificar Instalación
 
@@ -59,6 +61,9 @@ docker info | grep -E "CPUs|Total Memory"
 
 # Verificar Python
 python3 --version
+
+# Verificar Java (para entrenamiento local)
+java -version
 ```
 
 ### Puertos Necesarios (Deben estar libres)
@@ -77,7 +82,6 @@ python3 --version
 
 Verificar puertos libres:
 ```bash
-# Verificar si algún puerto está en uso
 sudo lsof -i :8080,8081,8088,8000,8501,9870,9092,9093,9000
 ```
 
@@ -107,8 +111,8 @@ ls -la scripts/
 ```
 
 **Archivos esperados en Dataset/:**
-- `movie.csv`
-- `rating.csv`
+- `movie.csv` (~27,000 películas)
+- `rating.csv` (~20M ratings)
 - `tag.csv`
 - `genome_tags.csv`
 - `genome_scores.csv`
@@ -150,7 +154,6 @@ docker compose ps
 ### 2.3. Esperar Inicialización Completa
 
 ```bash
-# Esperar 60 segundos para que todos los servicios se inicialicen
 echo "Esperando inicialización de servicios..."
 sleep 60
 ```
@@ -167,13 +170,6 @@ sleep 60
 
 **Tiempo estimado:** 3-5 minutos
 
-**Tests ejecutados:**
-- ✅ Conectividad de servicios
-- ✅ HDFS (lectura/escritura)
-- ✅ Kafka (topics/producer/consumer)
-- ✅ Spark Standalone
-- ✅ Spark + Kafka Integration
-
 ### 3.2. Verificación Manual de Servicios Críticos
 
 ```bash
@@ -187,7 +183,7 @@ echo "=== YARN ===" && curl -s http://localhost:8088 | grep -q "cluster" && echo
 echo "=== Spark ===" && curl -s http://localhost:8080 | grep -q "Spark" && echo "✅ OK" || echo "❌ ERROR"
 
 # API
-echo "=== API ===" && curl -s http://localhost:8000/metrics/health | grep -q "healthy" && echo "✅ OK" || echo "❌ ERROR"
+echo "=== API ===" && curl -s http://localhost:8000/recommendations/health | grep -q "status" && echo "✅ OK" || echo "❌ ERROR"
 ```
 
 ### 3.3. Verificar Recursos de Spark
@@ -208,13 +204,7 @@ echo "=== API ===" && curl -s http://localhost:8000/metrics/health | grep -q "he
 
 ## Paso 4: Configurar Fair Scheduler
 
-### 4.1. Verificar que fairscheduler.xml Existe
-
-```bash
-ls -la fairscheduler.xml
-```
-
-### 4.2. Copiar a Contenedores Spark
+### 4.1. Copiar a Contenedores Spark
 
 ```bash
 # Crear directorio de configuración
@@ -226,21 +216,16 @@ docker cp fairscheduler.xml spark-master:/opt/spark/conf/
 docker cp fairscheduler.xml spark-worker:/opt/spark/conf/
 ```
 
-### 4.3. Verificar Configuración
+### 4.2. Verificar Configuración
 
 ```bash
-# Verificar en spark-master
 docker exec spark-master cat /opt/spark/conf/fairscheduler.xml | head -10
-
-# Verificar en spark-worker
-docker exec spark-worker cat /opt/spark/conf/fairscheduler.xml | head -10
 ```
 
 **Pools configurados:**
 - `streaming` (prioridad ALTA, peso 2)
 - `batch` (prioridad MEDIA, peso 1)
 - `generator` (prioridad BAJA, peso 1)
-- `default` (peso 1)
 
 ---
 
@@ -281,7 +266,6 @@ docker exec spark-worker cat /opt/spark/conf/fairscheduler.xml | head -10
 ### 6.1. Subir Archivos CSV a HDFS
 
 ```bash
-# Asegurarse de estar en el directorio raíz del proyecto
 cd /home/abraham/Escritorio/PGVD/Recomendacion-Gran-Escala
 
 # Subir los 6 archivos CSV
@@ -293,73 +277,106 @@ cd /home/abraham/Escritorio/PGVD/Recomendacion-Gran-Escala
 ./scripts/recsys-utils.sh hdfs-put Dataset/link.csv /data/movielens/csv/
 ```
 
-**Tiempo estimado:** 5-10 minutos (dependiendo del tamaño de datos)
+**Tiempo estimado:** 5-10 minutos
 
 ### 6.2. Verificar Archivos Subidos
 
 ```bash
-# Listar archivos en HDFS
 ./scripts/recsys-utils.sh hdfs-ls /data/movielens/csv
 ```
-
-**Resultado esperado:** 6 archivos CSV
-
-### 6.3. Verificar Integridad
-
-```bash
-./scripts/recsys-utils.sh spark-submit scripts/verify_csv_integrity.py
-```
-
-**Resultado esperado:** ~32 millones de registros totales
 
 ---
 
 ## Paso 7: Ejecutar Pipeline ETL
 
-### 7.1. ETL: CSV a Parquet (Fase 3)
+### 7.1. ETL: CSV a Parquet
 
 ```bash
 ./scripts/recsys-utils.sh spark-submit movies/src/etl/etl_movielens.py
 ```
 
-**Tiempo estimado:** 10-15 minutos  
-**Qué hace:** Convierte CSV a Parquet con schemas tipados y particionado inteligente
+**Tiempo estimado:** 10-15 minutos
 
-Verificar:
-```bash
-./scripts/recsys-utils.sh hdfs-ls /data/movielens_parquet
-```
-
-### 7.2. Generar Features de Contenido (Fase 4)
+### 7.2. Generar Features de Contenido
 
 ```bash
 ./scripts/recsys-utils.sh spark-submit movies/src/features/generate_content_features.py
 ```
 
-**Tiempo estimado:** 5-8 minutos  
-**Qué hace:** Crea vectores de features (géneros + genome tags) para cada película
+**Tiempo estimado:** 5-8 minutos
 
-Verificar:
+### 7.3. Verificar Datos Procesados
+
 ```bash
+./scripts/recsys-utils.sh hdfs-ls /data/movielens_parquet
 ./scripts/recsys-utils.sh hdfs-ls /data/content_features
 ```
 
 ---
 
-## Paso 8: Configurar Kafka
+## Paso 8: Entrenar Modelos de Recomendación
 
-### 8.1. Crear Topics
+### 8.1. Entrenamiento Automatizado (Recomendado)
+
+```bash
+# Entrena ALS, Item-CF, Content-Based e Hybrid
+./scripts/train_all_models.sh
+```
+
+**Tiempo estimado:** 30-60 minutos (primera vez)
+
+El script:
+1. ✅ Crea entorno virtual en `.venv-training/`
+2. ✅ Instala PySpark, pandas, numpy
+3. ✅ Verifica Java y memoria
+4. ✅ Entrena todos los modelos
+5. ✅ Muestra resumen de métricas
+
+### 8.2. Verificar Modelos Entrenados
+
+```bash
+# Listar modelos
+ls -lh movies/trained_models/*/model_latest
+
+# Ver métricas de ALS
+cat movies/trained_models/als/model_latest/metadata.json | python3 -m json.tool
+```
+
+**Salida esperada:**
+```json
+{
+  "metrics": {
+    "rmse": 0.8234,
+    "mae": 0.6431
+  }
+}
+```
+
+### 8.3. Re-entrenar Modelos (si es necesario)
+
+```bash
+# Forzar re-entrenamiento de todos los modelos
+./scripts/train_all_models.sh --force
+
+# Entrenar solo modelos específicos
+./scripts/train_all_models.sh --models=ALS,ITEM_CF
+```
+
+---
+
+## Paso 9: Configurar Kafka
+
+### 9.1. Crear Topics
 
 ```bash
 python3 movies/src/streaming/create_kafka_topics.py
 ```
 
-**Tiempo estimado:** 30 segundos  
 **Topics creados:**
 - `ratings` (6 particiones)
 - `metrics` (3 particiones)
 
-### 8.2. Verificar Topics
+### 9.2. Verificar Topics
 
 ```bash
 ./scripts/recsys-utils.sh kafka-topics
@@ -367,19 +384,13 @@ python3 movies/src/streaming/create_kafka_topics.py
 
 ---
 
-## Paso 9: Iniciar Pipeline de Streaming
+## Paso 10: Iniciar Pipeline de Streaming
 
-### 9.1. Terminal 1 - Generador de Datos
+### 10.1. Terminal 1 - Generador de Datos
 
 ```bash
-# Generar ratings sintéticos (1 rating/segundo)
-./scripts/run-latent-generator.sh 1
+./scripts/run-latent-generator.sh 100 &
 ```
-
-**Qué hace:**
-- 📊 Genera ratings basados en factores latentes (Factorización Matricial)
-- 📤 Envía datos al topic Kafka `ratings`
-- 🎯 Usa pool `generator` (prioridad baja)
 
 **Salida esperada:**
 ```
@@ -388,186 +399,127 @@ Topic Kafka: ratings
 Throughput: 100 ratings/segundo
 ```
 
-**Dejar correr 1-2 minutos**, luego puedes detenerlo con `Ctrl+C` o dejarlo en background.
-
-### 9.2. Verificar Datos en Kafka
+### 10.2. Terminal 2 - Procesador de Streaming
 
 ```bash
-# Ver cuántos mensajes se han generado
-docker exec kafka kafka-run-class kafka.tools.GetOffsetShell \
-  --broker-list localhost:9092 \
-  --topic ratings 2>/dev/null | \
-  awk -F: '{sum += $NF} END {print "Total ratings:", sum}'
-
-# Ver un mensaje de ejemplo
-docker exec kafka kafka-console-consumer \
-  --bootstrap-server localhost:9092 \
-  --topic ratings \
-  --max-messages 3 \
-  --timeout-ms 5000 2>/dev/null
+./scripts/run-streaming-processor.sh &
 ```
-
-### 9.3. Terminal 2 - Procesador de Streaming
-
-```bash
-./scripts/run-streaming-processor.sh
-```
-
-**Qué hace:**
-- 📥 Lee del topic `ratings` de Kafka
-- 🪟 Calcula ventanas: Tumbling (1 min) y Sliding (5 min)
-- 💾 Guarda agregaciones en HDFS `/streams/ratings/`
-- 📊 Publica métricas al topic `metrics`
-- 🎯 Usa pool `streaming` (prioridad alta)
 
 **Salida esperada:**
 ```
--------------------------------------------
 Batch: 0
--------------------------------------------
 Batch: 1
--------------------------------------------
+...
 ```
 
-⚠️ **IMPORTANTE:** Dejar este proceso corriendo
+### 10.3. Terminal 3 - Analytics Batch (Opcional)
 
-### 9.4. Terminal 3 - Analytics Batch (Opcional)
-
-**Esperar 2-3 minutos** después de iniciar el streaming, luego:
+**Esperar 2-3 minutos** después de iniciar el streaming:
 
 ```bash
 ./scripts/run-batch-analytics.sh
 ```
 
-**Qué hace:**
-- 📊 Analiza distribución de ratings (global y por género)
-- 🏆 Calcula Top-N películas por periodo
-- 📈 Identifica películas trending
-- 💾 Guarda resultados en HDFS `/outputs/analytics/`
-
 ---
 
-## Paso 10: Verificar Sistema Completo
+## Paso 11: Verificar Sistema Completo
 
-### 10.1. Probar Endpoints de la API
+### 11.1. Health Check del API
 
 ```bash
-# Health check
-curl -s http://localhost:8000/metrics/health | jq
-
-# Resumen de métricas
-curl -s http://localhost:8000/metrics/summary | jq
-
-# Top-N películas
-curl -s http://localhost:8000/metrics/topn?limit=5 | jq
-
-# Métricas por género
-curl -s http://localhost:8000/metrics/genres | jq
+curl http://localhost:8000/recommendations/health | python3 -m json.tool
 ```
 
-### 10.2. Abrir Dashboard
+**Respuesta esperada:**
+```json
+{
+  "status": "healthy",
+  "model_loaded": true,
+  "model_version": "hybrid_v1",
+  "strategy": "balanced",
+  "models": {
+    "als": true,
+    "item_cf": true,
+    "content_based": true
+  }
+}
+```
+
+### 11.2. Probar Recomendaciones
 
 ```bash
-# Abrir en navegador (Linux)
+# Recomendaciones con estrategia por defecto (balanced)
+curl "http://localhost:8000/recommendations/recommend/123?n=5" | python3 -m json.tool
+
+# Recomendaciones con estrategia específica
+curl "http://localhost:8000/recommendations/recommend/123?n=5&strategy=als_heavy" | python3 -m json.tool
+```
+
+### 11.3. Verificar Dashboard
+
+```bash
 xdg-open http://localhost:8501
 ```
 
-O manualmente: **http://localhost:8501**
+### 11.4. Verificar Datos en Kafka
 
-**Verificar que se vea:**
-- ✅ Métricas en tiempo real actualizándose
-- ✅ Gráficas de ratings por minuto
-- ✅ Top películas
-- ✅ Distribución de géneros
+```bash
+# Ver mensajes en topic 'ratings'
+docker exec kafka kafka-console-consumer \
+  --bootstrap-server localhost:9092 \
+  --topic ratings \
+  --max-messages 5
+
+# Ver métricas
+docker exec kafka kafka-console-consumer \
+  --bootstrap-server localhost:9092 \
+  --topic metrics \
+  --max-messages 5
+```
 
 ---
 
 ## Checklist Final
 
-### Primera Ejecución Completada
+### Infraestructura
+- [ ] 10 contenedores Docker corriendo
+- [ ] HDFS accesible (http://localhost:9870)
+- [ ] Spark UI accesible (http://localhost:8080)
+- [ ] YARN accesible (http://localhost:8088)
 
-- [ ] Requisitos instalados (Docker, Python)
-- [ ] Permisos dados a scripts (`chmod +x`)
-- [ ] Infraestructura iniciada (10 contenedores corriendo)
-- [ ] Tests pasados (suite completa)
-- [ ] Fair Scheduler configurado
-- [ ] Directorios HDFS creados
-- [ ] CSVs subidos a HDFS (6 archivos)
-- [ ] Integridad verificada
-- [ ] ETL Parquet ejecutado
-- [ ] Features de contenido generadas
-- [ ] Topics Kafka creados
-- [ ] Generador de datos funcionando
-- [ ] Streaming processor funcionando
-- [ ] API respondiendo
+### Datos
+- [ ] 6 archivos CSV en HDFS `/data/movielens/csv/`
+- [ ] Datos Parquet en `/data/movielens_parquet/`
+- [ ] Features en `/data/content_features/`
+
+### Modelos
+- [ ] Modelo ALS entrenado y cargado
+- [ ] Modelo Item-CF entrenado
+- [ ] Modelo Content-Based entrenado
+- [ ] Modelo Hybrid configurado
+
+### Streaming
+- [ ] Topics Kafka creados (ratings, metrics)
+- [ ] Latent Generator corriendo
+- [ ] Streaming Processor corriendo
+
+### API
+- [ ] Health check responde "healthy"
+- [ ] Recomendaciones funcionando
 - [ ] Dashboard mostrando métricas
 
-### Estado Final Esperado
+---
 
-```
-✅ Infraestructura: HDFS, YARN, Spark, Kafka
-✅ Fair Scheduler: Configurado y funcionando
-✅ Datos: CSV → Parquet → Features
-✅ Generador Latente: Produciendo ratings sintéticos
-✅ Streaming Processor: Procesando y agregando datos
-✅ API: Respondiendo con métricas en tiempo real
-✅ Dashboard: Mostrando visualizaciones actualizadas
-```
+## 🎉 ¡Sistema Desplegado!
+
+Una vez completados todos los pasos:
+
+1. **API de Recomendaciones:** http://localhost:8000/docs
+2. **Dashboard:** http://localhost:8501
+3. **Monitoreo Spark:** http://localhost:8080
+
+Para próximas ejecuciones, usa `GUIA_DESPLIEGUE_REGULAR.md`.
 
 ---
 
-## 🆘 Problemas Comunes en Primera Ejecución
-
-### Contenedores no inician
-
-```bash
-./scripts/stop-system.sh
-docker compose down --volumes  # Solo si quieres limpiar todo
-./scripts/start-system.sh
-```
-
-### Puerto en uso
-
-```bash
-# Identificar proceso usando el puerto
-sudo lsof -i :8080
-
-# Matar proceso si es necesario
-sudo kill -9 <PID>
-```
-
-### HDFS no accesible
-
-```bash
-# Reiniciar namenode
-docker restart namenode
-sleep 30
-```
-
-### ModuleNotFoundError: numpy
-
-```bash
-./scripts/instalar-dependencias-spark.sh
-```
-
-### Memoria insuficiente
-
-```bash
-# Verificar recursos
-docker stats
-
-# Si es necesario, ajustar en docker-compose.yml
-# SPARK_WORKER_MEMORY=2G  (reducir de 4G)
-```
-
----
-
-## ⏭️ Siguiente Paso
-
-Una vez completada la primera ejecución, consulta:
-- **`GUIA_DESPLIEGUE_REGULAR.md`** - Para ejecuciones posteriores
-- **`DOCUMENTACION.md`** - Para documentación técnica completa
-
----
-
-**Tiempo total estimado de primera ejecución:** 45-60 minutos
+**Tiempo total de despliegue inicial:** ~60-90 minutos
