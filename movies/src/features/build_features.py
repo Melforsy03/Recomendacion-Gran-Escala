@@ -175,16 +175,12 @@ def build_genres_features(movies, spark):
             return Vectors.sparse(n_genres, {})
         
         genre_idx_map = genre_to_idx_bc.value
-        indices = []
-        
-        for genre in genres_arr:
-            if genre in genre_idx_map:
-                indices.append(genre_idx_map[genre])
+        # Usar set para evitar duplicados y ordenar para cumplir requisito de índices crecientes
+        indices = sorted({genre_idx_map[g] for g in genres_arr if g in genre_idx_map})
         
         if not indices:
             return Vectors.sparse(n_genres, {})
         
-        # Crear sparse vector con 1.0 en las posiciones de los géneros presentes
         values = [1.0] * len(indices)
         return Vectors.sparse(n_genres, indices, values)
     

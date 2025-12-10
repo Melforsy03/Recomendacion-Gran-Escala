@@ -14,6 +14,7 @@ tzdata>=2022.1
 
 # Kafka Streaming (Fase 6)
 kafka-python>=2.0.2
+requests>=2.31.0
 
 # PySpark MLlib dependencies (included with Spark, listed for reference)
 # pyspark==3.4.1
