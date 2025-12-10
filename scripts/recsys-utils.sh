@@ -202,9 +202,20 @@ function spark_submit() {
     local script_name=$(basename "$script")
     print_info "Copiando script a spark-master: $script_name"
     docker cp "$script" spark-master:/tmp/"$script_name"
+    # Asegurar que el PYTHONPATH incluya librerías de /opt/spark-python-libs si existen
+    PY_LIB="/opt/spark-python-libs/lib"
+    PY_VER=$(docker exec spark-master python3 -c "import sys; import pathlib; print('python' + sys.version.split()[0][:3])" 2>/dev/null || echo "")
+    if [[ -n "$PY_VER" ]]; then
+        PY_LIB="$PY_LIB/$PY_VER/site-packages"
+    fi
+    ENV_VARS=(-e PYSPARK_PYTHON=python3 -e PYSPARK_DRIVER_PYTHON=python3)
+    if docker exec spark-master test -d "$PY_LIB"; then
+        ENV_VARS+=(-e PYTHONPATH="$PY_LIB:\$PYTHONPATH")
+    fi
     
     print_header "Ejecutando Spark Job: $script_name"
-    docker exec spark-master spark-submit \
+    docker exec "${ENV_VARS[@]}" \
+        spark-master spark-submit \
         --master spark://spark-master:7077 \
         --conf spark.sql.shuffle.partitions=200 \
         /tmp/"$script_name" "$@"
@@ -227,9 +238,19 @@ function spark_submit_kafka() {
     local script_name=$(basename "$script")
     print_info "Copiando script a spark-master: $script_name"
     docker cp "$script" spark-master:/tmp/"$script_name"
+    PY_LIB="/opt/spark-python-libs/lib"
+    PY_VER=$(docker exec spark-master python3 -c "import sys; import pathlib; print('python' + sys.version.split()[0][:3])" 2>/dev/null || echo "")
+    if [[ -n "$PY_VER" ]]; then
+        PY_LIB="$PY_LIB/$PY_VER/site-packages"
+    fi
+    ENV_VARS=(-e PYSPARK_PYTHON=python3 -e PYSPARK_DRIVER_PYTHON=python3)
+    if docker exec spark-master test -d "$PY_LIB"; then
+        ENV_VARS+=(-e PYTHONPATH="$PY_LIB:\$PYTHONPATH")
+    fi
     
     print_header "Ejecutando Spark Streaming Job: $script_name"
-    docker exec spark-master spark-submit \
+    docker exec "${ENV_VARS[@]}" \
+        spark-master spark-submit \
         --master spark://spark-master:7077 \
         --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1 \
         --conf spark.sql.shuffle.partitions=200 \
