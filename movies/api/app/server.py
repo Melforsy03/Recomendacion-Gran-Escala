@@ -24,14 +24,28 @@ except ImportError as e:
     stop_consumer = None
     metrics_router = None
 
+# Importar servicio y rutas de recomendaciones (intentar, si falla continuar sin ellas)
+try:
+    from services.recommender_service import initialize_service, shutdown_service
+    from routes.recommendations import router as recommendations_router
+    RECOMMENDATIONS_AVAILABLE = True
+    print("✅ Recommendations modules imported successfully")
+except ImportError as e:
+    print(f"⚠️  Warning: Recommendations module not available: {e}")
+    print(f"   Error details: {e}")
+    RECOMMENDATIONS_AVAILABLE = False
+    initialize_service = None
+    shutdown_service = None
+    recommendations_router = None
+
 
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
 METRICS_TOPIC = os.getenv("METRICS_TOPIC", "metrics")
 
 app = FastAPI(
-    title="Realtime Recs Metrics API",
-    description="API para métricas de streaming en tiempo real - Fase 9",
-    version="2.0.0"
+    title="MovieLens Recommendation System API",
+    description="API para recomendaciones de películas y métricas de streaming en tiempo real",
+    version="3.0.0"
 )
 
 # Configurar CORS para permitir acceso desde dashboard
@@ -49,6 +63,13 @@ if METRICS_AVAILABLE and metrics_router:
     print("✅ Metrics router registered")
 else:
     print("⚠️  Metrics router not available, using legacy endpoints only")
+
+# Incluir rutas de recomendaciones si están disponibles
+if RECOMMENDATIONS_AVAILABLE and recommendations_router:
+    app.include_router(recommendations_router)
+    print("✅ Recommendations router registered")
+else:
+    print("⚠️  Recommendations router not available, running without recommendation endpoints")
 
 
 class ConnectionManager:
@@ -126,10 +147,24 @@ async def consume_metrics():
 
 @app.on_event("startup")
 async def startup_event():
+    print("\n" + "="*80)
+    print("INICIANDO API - SISTEMA DE RECOMENDACIÓN")
+    print("="*80)
+    
     # Montamos estáticos
     static_dir = os.path.join(os.path.dirname(__file__), "static")
     if os.path.isdir(static_dir):
         app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    
+    # Inicializar servicio de recomendaciones si está disponible
+    if RECOMMENDATIONS_AVAILABLE and initialize_service:
+        try:
+            print("\n🎯 Inicializando servicio de recomendaciones...")
+            initialize_service()
+            print("✅ Servicio de recomendaciones listo")
+        except Exception as e:
+            print(f"❌ Error al inicializar servicio de recomendaciones: {e}")
+            print("La API funcionará sin endpoints de recomendaciones")
     
     # Iniciar consumer de métricas del nuevo sistema si está disponible
     if METRICS_AVAILABLE and start_consumer:
@@ -140,9 +175,38 @@ async def startup_event():
     
     # Mantener consumidor legacy en background para compatibilidad
     asyncio.create_task(consume_metrics())
+    
+    print("\n" + "="*80)
+    print("✅ API LISTA")
+    print("="*80)
+    print("Endpoints disponibles:")
+    if RECOMMENDATIONS_AVAILABLE:
+        print("  - GET  /recommendations/recommend/{user_id}")
+        print("  - POST /recommendations/predict")
+        print("  - GET  /recommendations/similar/{movie_id}")
+        print("  - GET  /recommendations/health")
+    if METRICS_AVAILABLE:
+        print("  - GET  /metrics/summary")
+        print("  - GET  /metrics/topn")
+        print("  - GET  /metrics/genres")
+    print("  - GET  /docs (OpenAPI documentation)")
+    print("="*80 + "\n")
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    print("\n" + "="*80)
+    print("DETENIENDO API")
+    print("="*80)
+    
+    # Detener servicio de recomendaciones
+    if RECOMMENDATIONS_AVAILABLE and shutdown_service:
+        print("Deteniendo servicio de recomendaciones...")
+        shutdown_service()
+        print("✅ Servicio de recomendaciones detenido")
+    
     # Detener consumer de métricas si está disponible
     if METRICS_AVAILABLE and stop_consumer:
         await stop_consumer()
+        print("✅ Metrics consumer detenido")
+    
+    print("="*80 + "\n")

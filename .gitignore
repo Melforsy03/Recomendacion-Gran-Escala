@@ -48,14 +48,19 @@ env/
 ENV/
 env.bak/
 venv.bak/
+.venv-training/
+.pytest_cache/
 
 # 🤖 Modelos Entrenados (demasiado grandes para Git)
 movies/trained_models/als/*
 movies/trained_models/item_cf/*
 movies/trained_models/content_based/*
+movies/trained_models/hybrid/*
+# Mantener archivos importantes
 !movies/trained_models/als/.gitkeep
 !movies/trained_models/item_cf/.gitkeep
 !movies/trained_models/content_based/.gitkeep
+!movies/trained_models/hybrid/.gitkeep
 !movies/trained_models/README.md
 
 # 📊 Notebooks de entrenamiento (checkpoints)

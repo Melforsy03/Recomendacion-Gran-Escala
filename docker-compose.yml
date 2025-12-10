@@ -303,6 +303,13 @@ services:
     environment:
       - KAFKA_BOOTSTRAP=kafka:9092
       - METRICS_TOPIC=metrics
+      - PYTHONPATH=/app:/app/src
+    volumes:
+      - ./movies/trained_models:/app/trained_models:ro
+      - ./Dataset/movie.csv:/app/movies_metadata.csv:ro
+      - ./movies/src:/app/movies/src:ro
+      - ./movies/api/services:/app/services:ro
+      - ./movies/api/routes:/app/routes:ro
     depends_on:
       - kafka
     ports:
@@ -310,7 +317,7 @@ services:
     networks:
       - datapipeline
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/metrics/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/recommendations/health"]
       interval: 10s
       timeout: 5s
       retries: 5
