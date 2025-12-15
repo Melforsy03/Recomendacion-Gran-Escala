@@ -240,6 +240,9 @@ class RecommenderService:
             features_path=content_path
         )
         
+        # Asignar ratings_df a Item-CF si está disponible (se carga después en _load_ratings)
+        # Nota: Este paso se completará después de _load_ratings()
+        
         # Leer versión del metadata
         metadata_file = RecommenderConfig.ALS_MODEL_PATH.parent / "metadata.json"
         if metadata_file.exists():
@@ -291,6 +294,11 @@ class RecommenderService:
             
             count = self.ratings_df.count()
             logger.info(f"✓ Ratings cargados: {count:,} valoraciones")
+            
+            # Asignar ratings_df a Item-CF si el modelo está cargado
+            if self.hybrid_model and self.hybrid_model.item_cf is not None:
+                self.hybrid_model.item_cf.ratings_df = self.ratings_df
+                logger.info("✓ Ratings asignados a Item-CF")
         else:
             logger.warning(f"⚠️  Ratings no encontrados en {ratings_path}")
             self.ratings_df = None
@@ -388,7 +396,8 @@ class RecommenderService:
             recommendations_df = self.hybrid_model.recommend(
                 user_id=user_id,
                 n=n,
-                strategy=strategy
+                strategy=strategy,
+                ratings_df=self.ratings_df
             )
             
             # Verificar si retorna DataFrame o lista
@@ -458,7 +467,7 @@ class RecommenderService:
             enriched = []
             for rec in recommendations:
                 metadata = self.movies_metadata.filter(
-                    F.col("movieId") == rec["movie_id"]
+                    F.col("movie_id") == rec["movie_id"]
                 ).first()
                 
                 if metadata:
@@ -510,7 +519,7 @@ class RecommenderService:
             # Enriquecer con metadata de película
             if self.movies_metadata is not None:
                 metadata = self.movies_metadata.filter(
-                    F.col("movieId") == movie_id
+                    F.col("movie_id") == movie_id
                 ).first()
                 
                 if metadata:
@@ -583,7 +592,7 @@ class RecommenderService:
                 # Enriquecer con metadata
                 if self.movies_metadata is not None:
                     metadata = self.movies_metadata.filter(
-                        F.col("movieId") == row["id"]
+                        F.col("movie_id") == row["id"]
                     ).first()
                     
                     if metadata:

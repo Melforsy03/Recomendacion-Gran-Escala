@@ -148,14 +148,21 @@ class ItemCollaborativeFiltering:
         if self.ratings_df is None:
             raise ValueError("Ratings no disponibles")
         
+        # Determinar nombres de columnas (soporte para ambos formatos)
+        user_col = "user_id" if "user_id" in self.ratings_df.columns else "userId"
+        movie_col = "movie_id" if "movie_id" in self.ratings_df.columns else "movieId"
+        
         # Películas que el usuario valoró positivamente
         user_movies = self.ratings_df.filter(
-            (F.col("userId") == user_id) &
+            (F.col(user_col) == user_id) &
             (F.col("rating") >= min_rating_threshold)
-        ).select("movieId", "rating")
+        ).select(movie_col, "rating")
         
         if user_movies.count() == 0:
             return []
+        
+        # Renombrar columna para el join
+        user_movies = user_movies.withColumnRenamed(movie_col, "movieId")
         
         # Encontrar películas similares
         similar_movies = user_movies.alias("um").join(
@@ -175,8 +182,8 @@ class ItemCollaborativeFiltering:
         
         # Filtrar películas ya vistas
         seen_movies = self.ratings_df.filter(
-            F.col("userId") == user_id
-        ).select("movieId")
+            F.col(user_col) == user_id
+        ).select(F.col(movie_col).alias("movieId"))
         
         recommendations = recommendations.join(
             seen_movies,
