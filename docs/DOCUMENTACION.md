@@ -330,9 +330,11 @@ class RecommenderConfig:
 | Script | Descripción | Uso |
 |--------|-------------|-----|
 | `start-system.sh` | Inicia toda la infraestructura | `./scripts/start-system.sh` |
+| `run-api-kafka-producer.sh` | Productor API/Dataset → Kafka | `./scripts/run-api-kafka-producer.sh` |
 | `run-latent-generator.sh` | Inicia generador de ratings | `./scripts/run-latent-generator.sh 100` |
 | `run-streaming-processor.sh` | Inicia procesador streaming | `./scripts/run-streaming-processor.sh` |
 | `run-batch-analytics.sh` | Ejecuta analytics batch | `./scripts/run-batch-analytics.sh` |
+| `simulate-traffic.sh` | Simula tráfico HTTP | `./scripts/simulate-traffic.sh --rate 10 --duration 30` |
 
 ### 7.2. Scripts de Entrenamiento
 

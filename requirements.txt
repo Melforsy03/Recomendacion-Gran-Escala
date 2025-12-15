@@ -13,7 +13,8 @@ pytz>=2020.1
 tzdata>=2022.1
 
 # Kafka Streaming (Fase 6)
-kafka-python>=2.0.2
+# kafka-python-ng es compatible con Python 3.12+ (fork mantenido de kafka-python)
+kafka-python-ng>=2.2.0
 requests>=2.31.0
 
 # PySpark MLlib dependencies (included with Spark, listed for reference)

@@ -69,16 +69,28 @@ if ! docker exec kafka kafka-topics --list --bootstrap-server localhost:9092 2>/
 fi
 echo -e "${GREEN}✅ Topic '${TOPIC}' listo${NC}"
 
+# Determinar el ejecutable de Python a usar
+if [[ -f "$PROJECT_ROOT/.venv/bin/python" ]]; then
+    PYTHON_CMD="$PROJECT_ROOT/.venv/bin/python"
+    echo -e "${GREEN}✅ Usando Python del entorno virtual: .venv${NC}"
+elif [[ -n "${VIRTUAL_ENV:-}" ]] && [[ -f "${VIRTUAL_ENV}/bin/python" ]]; then
+    PYTHON_CMD="${VIRTUAL_ENV}/bin/python"
+    echo -e "${GREEN}✅ Usando Python del entorno virtual activo${NC}"
+else
+    PYTHON_CMD="python3"
+    echo -e "${YELLOW}⚠️  Usando Python del sistema (no se encontró .venv)${NC}"
+fi
+
 # Verificar dependencias locales de Python
 echo -e "${YELLOW}🔍 Verificando dependencias Python (requests, kafka-python, pandas)...${NC}"
-if ! python3 - <<'PY' 2>/dev/null; then
+if ! "$PYTHON_CMD" - <<'PY' 2>/dev/null; then
 import requests  # type: ignore
 import kafka  # type: ignore
 import pandas  # type: ignore
 print("ok")
 PY
     echo -e "${RED}❌ Faltan dependencias (requests, kafka-python, pandas).${NC}"
-    echo -e "${YELLOW}📦 Instala con:${NC} pip install -r requirements.txt"
+    echo -e "${YELLOW}📦 Instala con:${NC} $PYTHON_CMD -m pip install -r requirements.txt"
     exit 1
 fi
 echo -e "${GREEN}✅ Dependencias disponibles${NC}"
@@ -99,7 +111,7 @@ RATINGS_API_URL="$API_URL" \
 RATINGS_LOCAL_PATH="$DATASET_PATH" \
 KAFKA_BOOTSTRAP_SERVERS="$BOOTSTRAP" \
 KAFKA_TOPIC="$TOPIC" \
-python3 "$PRODUCER_SCRIPT"
+"$PYTHON_CMD" "$PRODUCER_SCRIPT"
 
 EXIT_CODE=$?
 echo ""

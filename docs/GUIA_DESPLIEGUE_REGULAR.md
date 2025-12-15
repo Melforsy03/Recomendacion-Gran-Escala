@@ -227,6 +227,19 @@ curl http://localhost:8000/recommendations/health | python3 -m json.tool
 
 ## 5. Operaciones de Streaming
 
+### Iniciar Productor API/Dataset → Kafka
+
+```bash
+# Modo dataset local (sin dependencias externas)
+./scripts/run-api-kafka-producer.sh
+
+# Con API externa
+./scripts/run-api-kafka-producer.sh http://api.example.com/ratings
+
+# O usando variable de entorno
+RATINGS_API_URL="http://api.example.com/ratings" ./scripts/run-api-kafka-producer.sh
+```
+
 ### Iniciar Generador de Ratings
 
 ```bash
@@ -236,6 +249,28 @@ curl http://localhost:8000/recommendations/health | python3 -m json.tool
 # Generar 500 ratings/segundo (alto throughput)
 ./scripts/run-latent-generator.sh 500
 ```
+
+### Simular Tráfico HTTP
+
+```bash
+# Simular tráfico con valores por defecto (10 req/s durante 30s)
+./scripts/simulate-traffic.sh
+
+# Simular alta carga (50 req/s durante 5 minutos)
+./scripts/simulate-traffic.sh 50 300
+
+# Usando flags explícitos
+./scripts/simulate-traffic.sh --rate 10 --duration 30
+
+# Con API personalizada
+./scripts/simulate-traffic.sh --rate 20 --duration 60 --api-url http://localhost:8000
+```
+
+**Características del simulador:**
+- Distribución realista de usuarios (80% existentes, 20% nuevos)
+- Métricas de latencia (p50, p95, p99)
+- Logs detallados con timestamps en `logs/`
+- Verificación automática de disponibilidad de la API
 
 ### Iniciar Procesador de Streaming
 
