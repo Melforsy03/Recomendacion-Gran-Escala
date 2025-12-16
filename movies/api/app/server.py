@@ -4,7 +4,19 @@ import os
 from collections import defaultdict
 from typing import Dict, Any, List
 
-import orjson
+try:
+    import orjson
+except Exception:
+    # Fallback ligero cuando orjson no está instalado: usamos json y devolvemos bytes
+    import json as _json
+
+    class _OrjsonFallback:
+        @staticmethod
+        def dumps(obj):
+            # orjson.dumps devuelve bytes; mantener ese contrato
+            return _json.dumps(obj, default=str).encode("utf-8")
+
+    orjson = _OrjsonFallback()
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -70,6 +82,30 @@ if RECOMMENDATIONS_AVAILABLE and recommendations_router:
     print("✅ Recommendations router registered")
 else:
     print("⚠️  Recommendations router not available, running without recommendation endpoints")
+
+# Incluir ruta de ingest (ratings) si está disponible
+try:
+    from routes.ingest import router as ingest_router
+    from services.ratings_producer import (
+        start_producer,
+        stop_producer,
+        start_background_publisher,
+        stop_background_publisher,
+    )
+    INGEST_AVAILABLE = True
+    print("✅ Ratings ingest module imported")
+except ImportError as e:
+    INGEST_AVAILABLE = False
+    start_producer = None
+    stop_producer = None
+    start_background_publisher = None
+    stop_background_publisher = None
+    ingest_router = None
+    print(f"⚠️  Ratings ingest not available: {e}")
+
+if INGEST_AVAILABLE and ingest_router:
+    app.include_router(ingest_router)
+    print("✅ Ratings ingest router registered")
 
 
 class ConnectionManager:
@@ -173,6 +209,22 @@ async def startup_event():
     else:
         print("⚠️  Metrics consumer not available, using legacy consumer only")
     
+    # Iniciar producer de ratings si está disponible
+    if INGEST_AVAILABLE and start_producer:
+        try:
+            await start_producer(bootstrap_servers=KAFKA_BOOTSTRAP)
+            print("✅ Ratings producer started")
+        except Exception as e:
+            print(f"❌ Error iniciando ratings producer: {e}")
+
+    # Iniciar publicador en background (cola) si está disponible
+    if INGEST_AVAILABLE and start_background_publisher:
+        try:
+            await start_background_publisher()
+            print("✅ Ratings background publisher started")
+        except Exception as e:
+            print(f"❌ Error iniciando background publisher de ratings: {e}")
+    
     # Mantener consumidor legacy en background para compatibilidad
     asyncio.create_task(consume_metrics())
     
@@ -208,5 +260,15 @@ async def shutdown_event():
     if METRICS_AVAILABLE and stop_consumer:
         await stop_consumer()
         print("✅ Metrics consumer detenido")
+    
+    # Detener producer de ratings si está disponible
+    if INGEST_AVAILABLE and stop_producer:
+        await stop_producer()
+        print("✅ Ratings producer detenido")
+
+    # Detener publicador en background de ratings si está disponible
+    if INGEST_AVAILABLE and stop_background_publisher:
+        await stop_background_publisher()
+        print("✅ Ratings background publisher detenido")
     
     print("="*80 + "\n")

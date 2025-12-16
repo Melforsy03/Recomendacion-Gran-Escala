@@ -250,6 +250,13 @@ RATINGS_API_URL="http://api.example.com/ratings" ./scripts/run-api-kafka-produce
 ./scripts/run-latent-generator.sh 500
 ```
 
+Alternativa: usar el productor HTTP que envía directamente a la API (útil para pruebas locales):
+
+```bash
+# Envía ratings por HTTP al endpoint /ratings de la API (ejemplo: 1 r/s)
+RATINGS_HTTP_URL="http://localhost:8000/ratings/" python3 movies/src/streaming/latent_http_producer.py 1
+```
+
 ### Simular Tráfico HTTP
 
 ```bash

@@ -399,6 +399,13 @@ Topic Kafka: ratings
 Throughput: 100 ratings/segundo
 ```
 
+Alternativa (productor HTTP que envía a la API local):
+
+```bash
+# Envía ratings por HTTP al endpoint /ratings de la API
+RATINGS_HTTP_URL="http://localhost:8000/ratings/" python3 movies/src/streaming/latent_http_producer.py 1
+```
+
 ### 10.2. Terminal 2 - Procesador de Streaming
 
 ```bash
