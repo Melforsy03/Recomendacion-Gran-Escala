@@ -306,6 +306,7 @@ services:
       - PYTHONPATH=/app:/app/src
     volumes:
       - ./movies/trained_models:/app/trained_models:ro
+      - ./Dataset:/app/Dataset:ro
       - ./Dataset/movie.csv:/app/movies_metadata.csv:ro
       - ./movies/src:/app/movies/src:ro
       - ./movies/api/services:/app/services:ro

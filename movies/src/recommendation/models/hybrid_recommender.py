@@ -153,11 +153,18 @@ class HybridRecommender:
                 print(f"  ⚠ Item-CF falló: {e}")
         
         # Content-Based
-        if self.content_based and weights['content'] > 0 and ratings_df:
+        if self.content_based and weights['content'] > 0:
             try:
-                content_recs = self.content_based.recommend_for_user(
-                    user_id, ratings_df, n=n*2
-                )
+                # ✅ MEJORADO: Content-based SIEMPRE intenta con usuario primero
+                # Si usuario no tiene ratings, el método internally usa cold_start
+                if ratings_df is not None:
+                    content_recs = self.content_based.recommend_for_user(
+                        user_id, ratings_df, n=n*2
+                    )
+                else:
+                    # Sin ratings_df disponible, usar direct cold-start
+                    content_recs = self.content_based.recommend_for_cold_start(n=n*2)
+
                 for rec in content_recs:
                     movie_id = rec['movieId']
                     if movie_id not in all_recommendations:
@@ -166,11 +173,20 @@ class HybridRecommender:
                             'score': 0.0,
                             'sources': []
                         }
-                    all_recommendations[movie_id]['score'] += rec['score'] * weights['content']
+                    # nota: los recs pueden tener 'score' o no; usar 1.0 por defecto
+                    rec_score = rec.get('score', 1.0)
+                    all_recommendations[movie_id]['score'] += rec_score * weights['content']
                     all_recommendations[movie_id]['sources'].append('Content')
                 print(f"  ✓ Content-Based: {len(content_recs)} recomendaciones")
             except Exception as e:
                 print(f"  ⚠ Content-Based falló: {e}")
+        
+        # ✅ NUEVO: Fallback si todos los modelos retornan vacío
+        if not all_recommendations:
+            print(f"  ⚠ Ningún modelo generó candidatos, usando cold_start universal")
+            if self.content_based:
+                fallback = self.content_based.recommend_for_cold_start(n=n)
+                return fallback
         
         # Ordenar por score y retornar top-N
         sorted_recs = sorted(
