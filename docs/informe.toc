@@ -1,0 +1,35 @@
+\babel@toc {spanish}{}\relax 
+\contentsline {section}{\numberline {1}Informe T\'ecnico Final}{3}{section.1}%
+\contentsline {subsection}{\numberline {1.1}Arquitectura Final}{3}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}Mejoras del Pipeline}{3}{subsection.1.2}%
+\contentsline {subsection}{\numberline {1.3}Metodolog\'ia de Procesamiento}{4}{subsection.1.3}%
+\contentsline {subsection}{\numberline {1.4}An\'alisis de Resultados}{4}{subsection.1.4}%
+\contentsline {subsection}{\numberline {1.5}An\'alisis de Rendimiento}{4}{subsection.1.5}%
+\contentsline {subsection}{\numberline {1.6}Recomendaciones de Mejora Continua}{4}{subsection.1.6}%
+\contentsline {section}{\numberline {2}Resumen Ejecutivo}{5}{section.2}%
+\contentsline {section}{\numberline {3}Objetivos}{5}{section.3}%
+\contentsline {section}{\numberline {4}Dataset}{5}{section.4}%
+\contentsline {section}{\numberline {5}Arquitectura}{5}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Servicios Docker}{5}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Almacenamiento y mensajer\'ia}{5}{subsection.5.2}%
+\contentsline {section}{\numberline {6}Pipelines}{6}{section.6}%
+\contentsline {subsection}{\numberline {6.1}Batch}{6}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}Streaming}{6}{subsection.6.2}%
+\contentsline {section}{\numberline {7}Modelos de Recomendaci\'on}{6}{section.7}%
+\contentsline {subsection}{\numberline {7.1}ALS}{6}{subsection.7.1}%
+\contentsline {subsection}{\numberline {7.2}Item-CF}{6}{subsection.7.2}%
+\contentsline {subsection}{\numberline {7.3}Content-Based}{6}{subsection.7.3}%
+\contentsline {subsection}{\numberline {7.4}H\'ibrido}{6}{subsection.7.4}%
+\contentsline {section}{\numberline {8}API REST (FastAPI)}{6}{section.8}%
+\contentsline {section}{\numberline {9}Dashboard (Streamlit)}{7}{section.9}%
+\contentsline {section}{\numberline {10}Ejecuci\'on Operativa}{7}{section.10}%
+\contentsline {subsection}{\numberline {10.1}Pre-requisitos}{7}{subsection.10.1}%
+\contentsline {subsection}{\numberline {10.2}Arranque de infraestructura}{7}{subsection.10.2}%
+\contentsline {subsection}{\numberline {10.3}Pipeline batch}{7}{subsection.10.3}%
+\contentsline {subsection}{\numberline {10.4}Generaci\'on de eventos}{7}{subsection.10.4}%
+\contentsline {subsection}{\numberline {10.5}Streaming en tiempo real}{7}{subsection.10.5}%
+\contentsline {subsection}{\numberline {10.6}API y dashboard}{7}{subsection.10.6}%
+\contentsline {section}{\numberline {11}Persistencia}{8}{section.11}%
+\contentsline {section}{\numberline {12}Rendimiento y buenas pr\'acticas}{8}{section.12}%
+\contentsline {section}{\numberline {13}Problemas conocidos}{8}{section.13}%
+\contentsline {section}{\numberline {14}Conclusiones}{8}{section.14}%
