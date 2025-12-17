@@ -93,7 +93,6 @@ temp/
 *.secret
 config.properties
 *.env
-.env.local
 .env.development.local
 .env.test.local
 .env.production.local
@@ -108,7 +107,6 @@ ehthumbs.db
 Thumbs.db
 
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo
@@ -166,3 +164,8 @@ eda
 shared
 .venv
 .venv-producer
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat
+config.bat
+node_modules
