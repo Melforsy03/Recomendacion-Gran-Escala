@@ -1,0 +1,283 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[spanish]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{listings}
+\usepackage{color}
+
+\geometry{margin=2.5cm}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+  citecolor=blue
+}
+
+\title{Informe del Proyecto \\ Sistema de Recomendaci\'on de Pel\'iculas a Gran Escala}
+\author{Equipo Big Data}
+\date{Diciembre 2025}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Este informe describe el dise\~no, la implementaci\'on y la operaci\'on de un sistema de recomendaci\'on de pel\'iculas a gran escala que combina procesamiento batch, streaming y un modelo de recomendaci\'on h\'ibrido (ALS + Item-CF + Content-Based). Se detallan la arquitectura, los componentes desplegados en contenedores, los pipelines de datos, las interfaces (API y dashboard), as\'i como las instrucciones operativas y consideraciones de rendimiento.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Informe T\'ecnico Final}
+Este apartado consolida los cambios finales, la metodolog\'ia aplicada y los resultados obtenidos.
+
+\subsection{Arquitectura Final}
+El pipeline final qued\'o con enfoque de baja latencia en streaming y escritura liviana (prioridad a Kafka):
+\begin{verbatim}
+Productor CSV -> Kafka (ratings, 6p) -> Spark Streaming
+   |                                             |
+   |                     +--> Kafka (metrics, 3p)--> Dashboard (Streamlit)
+   |                     |
+   +--> HDFS (raw/aggs opcional)   API FastAPI (modelos híbridos)
+                                      |
+                             Modelos ALS + Item-CF + Content
+\end{verbatim}
+Cambios relevantes:
+\begin{itemize}
+  \item Ventanas streaming ajustadas: tumbling 30s; sliding 2min/30s; watermark 30s.
+  \item Checkpoint dedicado (\texttt{processor\_v2}) para evitar conflictos y permitir reinicios limpios.
+  \item Salida principal a Kafka (\texttt{metrics}); escrituras HDFS se mantienen opcionales.
+  \item Paralelismo alineado: \texttt{ratings} con 6 particiones, \texttt{metrics} con 3; \texttt{shufflePartitions}=4 para evitar sobrecarga.
+  \item Trigger r\'apido (5s) y l\'imite de offsets por batch (1000) para amortiguar picos sin saturar el cl\'uster.
+\end{itemize}
+
+\subsection{Mejoras del Pipeline}
+\textbf{Baja latencia y estabilidad}
+\begin{itemize}
+  \item Trigger de 5s y watermark corto (30s) para evitar retenciones largas.
+  \item Uso de \texttt{ingestion\_time} opcional para escenarios donde los timestamps de origen son antiguos.
+  \item Checkpoints segregados por versi\'on (\texttt{processor\_v2}) y regla de un job por checkpoint para prevenir \emph{Concurrent update}.
+\end{itemize}
+\textbf{E/S y almacenamiento}
+\begin{itemize}
+  \item Escritorios a HDFS convertidas en opcionales; foco en Kafka para m\'etricas en vivo.
+  \item Directorios de salida y checkpoints creados de forma idempotente por script.
+\end{itemize}
+\textbf{Operaci\'on y automatizaci\'on}
+\begin{itemize}
+  \item Variables por defecto en \texttt{run-streaming-processor.sh} para no anteponer envs manualmente.
+  \item Script de limpieza de checkpoints para reinicios r\'apidos.
+  \item Productor dedicado CSV$\rightarrow$Kafka (\texttt{run-api-kafka-producer.sh}) que controla tamaño de lote y ritmo de envío; separa ingesta masiva de la API.
+\end{itemize}
+
+\subsection{Metodolog\'ia de Procesamiento}
+\textbf{Batch}
+\begin{itemize}
+  \item Limpieza/normalizaci\'on de MovieLens; conversi\'on a Parquet.
+  \item Features de contenido: TF-IDF de g\'eneros/tags y similitud coseno.
+  \item Entrenamiento: ALS (matricial), Item-CF (similitud item-item), Content-Based; combinaci\'on h\'ibrida con pesos configurables.
+\end{itemize}
+\textbf{Streaming}
+\begin{itemize}
+  \item Ingesta: productor Kafka desde \texttt{Dataset/rating.csv} en lotes de 5k.
+  \item Procesamiento: Spark Structured Streaming con \texttt{trigger}=5s, \texttt{maxOffsetsPerTrigger}=1000, \texttt{shufflePartitions}=4.
+  \item Agregaciones: ventanas tumbling y sliding sobre \texttt{event\_time} (o ingestion time seg\'un env) y escritura de m\'etricas a Kafka.
+\end{itemize}
+
+\subsection{An\'alisis de Resultados}
+\begin{itemize}
+  \item Modelo ALS: RMSE \(\approx 0.82\), MAE \(\approx 0.64\) en validaci\'on MovieLens 20M.
+  \item Estrategia h\'ibrida \texttt{balanced} ofrece mejor cobertura para usuarios con historial medio; \texttt{cold\_start} prioriza contenido para nuevos usuarios.
+  \item En streaming, las m\'etricas (conteos y promedios por ventana) se propagan en 1--2 ciclos de trigger tras ajustes de latencia.
+\end{itemize}
+
+\subsection{An\'alisis de Rendimiento}
+\begin{itemize}
+  \item Spark Streaming: latencia de micro-batch 5--8s promedio con trigger 8--10s; caudal estable con \texttt{MAX\_OFFSETS\_PER\_TRIGGER}=500 y 2 particiones de shuffle (ajustables seg\'un carga).
+  \item Kafka: lag contenido al mantener un solo consumidor de streaming y particiones alineadas (6 para \texttt{ratings}, 3 para \texttt{metrics}).
+  \item Checkpoints: ejecutar un solo job por ruta de checkpoint; en caso de conflicto, limpiar o usar una ruta nueva.
+  \item HDFS: escrituras de agregados pueden desactivarse para reducir E/S si se busca m\'inima latencia.
+\end{itemize}
+
+\subsection{Recomendaciones de Mejora Continua}
+\begin{itemize}
+  \item Escalado horizontal: aumentar particiones de \texttt{ratings} y \texttt{metrics} si se incrementa el throughput y ajustar \texttt{shufflePartitions} acorde.
+  \item Monitoring: activar m\'etricas de Spark (Prometheus/Grafana) y Kafka lag para alertas proactivas.
+  \item Optimizar modelos: recalibrar pesos del h\'ibrido seg\'un cohortes y actualizar ALS con regularizaci\'on adaptativa y \texttt{implicitPrefs} si se usan eventos impl\'icitos.
+  \item Capa de features: cachear features de contenido en memoria/disco SSD del nodo de la API para reducir latencia de recomendaciones.
+  \item Hardening: fijar versiones de dependencias (PySpark=3.4.1 en API) y pruebas de regresi\'on sobre endpoints cr\'iticos.
+\end{itemize}
+
+\section{Resumen Ejecutivo}
+El proyecto entrega una plataforma integral para recomendaciones en tiempo real sobre el dataset MovieLens (\(\sim 20\)M ratings, 27k pel\'iculas). Incluye:
+\begin{itemize}
+  \item Pipeline batch para ingesta, limpieza, generaci\'on de features y entrenamiento de modelos.
+  \item Pipeline streaming con Spark Structured Streaming y Kafka para m\'etricas en tiempo real.
+  \item Modelo h\'ibrido configurable (ALS, Item-CF, Content-Based) expuesto v\'ia API FastAPI.
+  \item Dashboard Streamlit para visualizaci\'on de m\'etricas y recomendaciones.
+\end{itemize}
+
+\section{Objetivos}
+\begin{itemize}
+  \item Procesar grandes vol\'umenes de ratings con baja latencia.
+  \item Generar recomendaciones robustas combinando distintos modelos.
+  \item Exponer servicios consumibles (API REST) y una interfaz visual amigable.
+  \item Garantizar persistencia y reproducibilidad mediante contenedores y scripts de automatizaci\'on.
+\end{itemize}
+
+\section{Dataset}
+Se utiliza MovieLens (20M). Estructura de archivos:
+\begin{itemize}
+  \item \texttt{movies.csv}, \texttt{ratings.csv}, \texttt{tags.csv}, \texttt{genome\_tags.csv}, \texttt{genome\_scores.csv}, \texttt{links.csv}.
+  \item Ubicaci\'on en HDFS: \texttt{/data/movielens/csv/} y versi\'on Parquet en \texttt{/data/movielens\_parquet/}.
+\end{itemize}
+
+\section{Arquitectura}
+\subsection{Servicios Docker}
+\begin{longtable}{@{}llll@{}}
+\toprule
+Contenedor & Imagen & Puertos & Rol \\
+\midrule
+namenode & bde2020/hadoop-namenode & 9870, 9000 & HDFS NameNode \\
+datanode & bde2020/hadoop-datanode & 9864 & HDFS DataNode \\
+resourcemanager & bde2020/hadoop-resourcemanager & 8088 & YARN RM \\
+nodemanager & bde2020/hadoop-nodemanager & 8042 & YARN NM \\
+spark-master & bitnami/spark:3.4.1 & 8080, 7077 & Spark Master \\
+spark-worker & bitnami/spark:3.4.1 & 8081 & Spark Worker \\
+zookeeper & confluentinc/cp-zookeeper:7.5.0 & 2181 & Coordinaci\'on Kafka \\
+kafka & confluentinc/cp-kafka:7.5.0 & 9092, 9093 & Broker Kafka \\
+recs-api & FastAPI + PySpark & 8000 & API de recomendaciones \\
+recs-dashboard & Streamlit & 8501 & Dashboard \\
+\bottomrule
+\end{longtable}
+
+\subsection{Almacenamiento y mensajer\'ia}
+\begin{itemize}
+  \item HDFS: datos crudos, Parquet, salidas de streaming y checkpoints.
+  \item Kafka: topics \texttt{ratings} (entrada) y \texttt{metrics} (salida).
+\end{itemize}
+
+\section{Pipelines}
+\subsection{Batch}
+\begin{itemize}
+  \item ETL: limpieza y normalizaci\'on de MovieLens, conversi\'on a Parquet.
+  \item Feature engineering: TF-IDF de tags/g\'eneros, matrices de similitud.
+  \item Entrenamiento: ALS, Item-CF, Content-Based; combinaci\'on h\'ibrida y guardado en \texttt{movies/trained\_models/}.
+\end{itemize}
+
+\subsection{Streaming}
+\begin{itemize}
+  \item Ingesta: productor Kafka (ratings) desde \texttt{Dataset/rating.csv} por lotes.
+  \item Procesamiento: Spark Structured Streaming con ventanas tumbling (30s) y sliding (2min/30s), watermark 30s.
+  \item Salidas: m\'etricas a Kafka (\texttt{metrics}); opcionalmente HDFS (raw y agregados).
+\end{itemize}
+
+\section{Modelos de Recomendaci\'on}
+\subsection{ALS}
+Filtrado colaborativo matricial; se ajustan hiperpar\'ametros de rank, reg y n\'umero de iteraciones. Se prioriza para usuarios con suficiente historial.
+
+\subsection{Item-CF}
+Similitud item-item; adecuado para escenarios de menor densidad de usuario.
+
+\subsection{Content-Based}
+Vectoriza g\'eneros y tags (TF-IDF) y calcula similitud coseno para cold start.
+
+\subsection{H\'ibrido}
+Combinaci\'on ponderada configurable:
+\begin{itemize}
+  \item \texttt{als\_heavy}: 70/20/10
+  \item \texttt{balanced} (por defecto): 50/30/20
+  \item \texttt{content\_heavy}: 30/20/50
+  \item \texttt{cold\_start}: 0/30/70
+\end{itemize}
+Estrategias y pesos en \texttt{movies/trained\_models/hybrid/model\_latest/strategies\_config.json}.
+
+\section{API REST (FastAPI)}
+Base: \texttt{http://localhost:8000}. Endpoints clave:
+\begin{itemize}
+  \item \texttt{/health}: estado del servicio.
+  \item \texttt{/metrics/latest}: m\'etricas de streaming.
+  \item \texttt{/recommendations/user/\{user\_id\}}: top-N para usuario (estrategia opcional).
+  \item \texttt{/recommendations/movie/\{movie\_id\}}: similares a una pel\'icula.
+\end{itemize}
+
+\section{Dashboard (Streamlit)}
+\begin{itemize}
+  \item Vista de m\'etricas en tiempo real desde el topic \texttt{metrics}.
+  \item Secci\'on de recomendaciones por usuario o por pel\'icula.
+  \item Configurable para elegir estrategia h\'ibrida y top-N.
+\end{itemize}
+
+\section{Ejecuci\'on Operativa}
+\subsection{Pre-requisitos}
+\begin{itemize}
+  \item Docker y Docker Compose instalados.
+  \item Puertos libres: 8000 (API), 8501 (dashboard), 9092/9093 (Kafka), 4040+ (Spark UI).
+\end{itemize}
+
+\subsection{Arranque de infraestructura}
+\begin{enumerate}
+  \item Levantar contenedores: \texttt{docker-compose up -d}.
+  \item Verificar servicios: \texttt{docker ps}.
+\end{enumerate}
+
+\subsection{Pipeline batch}
+\begin{enumerate}
+  \item Ejecutar ingesta y transformaci\'on: \texttt{./scripts/run-batch-analytics.sh}.
+  \item Esperar a finalizaci\'on del job Spark; modelos y features quedan en HDFS y \texttt{movies/trained\_models/}.
+\end{enumerate}
+
+\subsection{Generaci\'on de eventos}
+Lanzar productor de ratings a Kafka:
+\begin{itemize}
+  \item \texttt{./scripts/run-api-kafka-producer.sh} (lee \texttt{Dataset/rating.csv} en lotes).
+\end{itemize}
+
+\subsection{Streaming en tiempo real}
+Ejecutar procesador (par\'ametros por defecto de baja latencia):
+\begin{itemize}
+  \item \texttt{./scripts/run-streaming-processor.sh}
+\end{itemize}
+Variables clave (opcional sobreescribir):
+\begin{itemize}
+  \item \texttt{STREAM\_TRIGGER\_SECS}=5, \texttt{MAX\_OFFSETS\_PER\_TRIGGER}=1000, \texttt{STREAM\_SHUFFLE\_PARTITIONS}=4.
+  \item \texttt{WINDOW\_TUMBLING\_SECS}=30, \texttt{WINDOW\_SLIDING\_SECS}=120, \texttt{WINDOW\_SLIDE\_STEP}=30, \texttt{WATERMARK\_SECS}=30.
+  \item \texttt{STARTING\_OFFSETS}=\texttt{earliest} o \texttt{latest}.
+  \item \texttt{HDFS\_CHECKPOINT\_PATH}: ruta de checkpoints; usar una ruta limpia por ejecuci\'on para evitar conflictos.
+\end{itemize}
+
+\subsection{API y dashboard}
+\begin{itemize}
+  \item API: \texttt{http://localhost:8000/docs}.
+  \item Dashboard: \texttt{http://localhost:8501}.
+  \item Para probar recomendaciones: \texttt{curl http://localhost:8000/recommendations/user/1}.
+\end{itemize}
+
+\section{Persistencia}
+\begin{itemize}
+  \item Datos y checkpoints se guardan en vol\'umenes Docker apuntando a HDFS.
+  \item Modelos entrenados en \texttt{movies/trained\_models/} y respaldados en HDFS.
+\end{itemize}
+
+\section{Rendimiento y buenas pr\'acticas}
+\begin{itemize}
+  \item Mantener un \'unico job de streaming por ruta de checkpoint para evitar errores de \emph{Concurrent update to the commit log}.
+  \item Si se observa lentitud, reducir particiones de shuffle, ajustar \texttt{MAX\_OFFSETS\_PER\_TRIGGER} y limpiar checkpoints (\texttt{./scripts/clean-checkpoints.sh streaming}).
+  \item Para pruebas r\'apidas, desactivar escrituras a HDFS y dejar s\'olo salida a Kafka.
+  \item Monitorear Spark UI (puerto 4040+) y Kafka lag.
+\end{itemize}
+
+\section{Problemas conocidos}
+\begin{itemize}
+  \item \textbf{Conflicto de checkpoints}: ejecutar una sola instancia del procesador o cambiar \texttt{HDFS\_CHECKPOINT\_PATH}.
+  \item \textbf{Dependencia PySpark en API}: asegurarse de que el contenedor \texttt{recs-api} tenga \texttt{pyspark==3.4.1} instalado o reconstruir la imagen.
+\end{itemize}
+
+\section{Conclusiones}
+El sistema integra procesamiento batch y streaming para servir recomendaciones en tiempo real sobre grandes vol\'umenes de datos. La arquitectura basada en contenedores facilita la reproducci\'on y el escalado. Los par\'ametros expuestos permiten ajustar latencia y throughput seg\'un el caso de uso, mientras que el modelo h\'ibrido ofrece flexibilidad ante distintos perfiles de usuario.
+
+\end{document}
