@@ -1,0 +1,589 @@
+version: '3.9'
+
+# ==========================================
+# STACK PARA DOCKER SWARM
+# ==========================================
+# Despliega servicio de recomendación en red Swarm entre dos computadoras manager
+# 
+# Requisitos previos:
+#   1. Inicializar Swarm: docker swarm init
+#   2. En cada nodo: docker swarm join --token SWMTKN-xxx
+#   3. Verificar nodos: docker node ls
+#   4. Verificar red overlay: docker network ls
+#
+# Desplegar stack:
+#   docker stack deploy -c docker-compose.swarm.yml recomendacion
+#
+# Consultar estado:
+#   docker stack ps recomendacion
+#   docker service ls
+#   docker network ls | grep recomendacion
+#
+# Actualizar stack:
+#   docker stack deploy -c docker-compose.swarm.yml recomendacion
+#
+# Eliminar stack:
+#   docker stack rm recomendacion
+
+networks:
+  # Red overlay para comunicación entre managers en Swarm
+  datapipeline:
+    driver: overlay
+    driver_opts:
+      # Encriptación de control plane (recomendado)
+      com.docker.network.driver.overlay.vxlan_list: "4789"
+    # Adjuntar red a todos los managers
+    attachable: true
+
+# ==========================================
+# VOLÚMENES DISTRIBUIDOS (NFS recomendado)
+# ==========================================
+# Para producción, usar:
+#   - NFS con floating IP entre managers
+#   - GlusterFS para distribución
+#   - Storage externo (EBS, Azure Managed Disk)
+#
+# Configuración local de ejemplo:
+volumes:
+  namenode_data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.0.0.1,vers=4,soft,timeo=180,bg,tcp,rw"  # Reemplazar con tu NFS
+      device: ":/exports/namenode_data"
+
+  datanode_data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.0.0.1,vers=4,soft,timeo=180,bg,tcp,rw"
+      device: ":/exports/datanode_data"
+
+  zookeeper_data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.0.0.1,vers=4,soft,timeo=180,bg,tcp,rw"
+      device: ":/exports/zookeeper_data"
+
+  zookeeper_log:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.0.0.1,vers=4,soft,timeo=180,bg,tcp,rw"
+      device: ":/exports/zookeeper_log"
+
+  kafka_data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.0.0.1,vers=4,soft,timeo=180,bg,tcp,rw"
+      device: ":/exports/kafka_data"
+
+  spark-ivy-cache:
+    driver: local
+
+  spark-pip-cache:
+    driver: local
+
+  spark-python-libs:
+    driver: local
+
+services:
+  # ==========================================
+  # HDFS & YARN CLUSTER
+  # ==========================================
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    hostname: namenode
+    environment:
+      - CLUSTER_NAME=datapipeline
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - CORE_CONF_hadoop_http_staticuser_user=root
+      - HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check=false
+      - HDFS_CONF_dfs_permissions_enabled=false
+      - HDFS_CONF_dfs_webhdfs_enabled=true
+    volumes:
+      - namenode_data:/hadoop/dfs/name
+    ports:
+      - target: 9870
+        published: 9870
+        protocol: tcp
+        mode: ingress
+      - target: 9000
+        published: 9000
+        protocol: tcp
+        mode: ingress
+    networks:
+      - datapipeline
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9870"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          # Ejecutar en manager-1 (reemplazar con tu hostname)
+          - node.hostname == manager-1
+        preferences:
+          - spread: node.id
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+        window: 120s
+    labels:
+      service: "hdfs"
+      component: "namenode"
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    hostname: datanode
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - CORE_CONF_hadoop_http_staticuser_user=root
+      - HDFS_CONF_dfs_permissions_enabled=false
+    volumes:
+      - datanode_data:/hadoop/dfs/data
+    networks:
+      - datapipeline
+    healthcheck:
+      test: ["CMD", "test", "-d", "/hadoop/dfs/data"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == manager-2
+        preferences:
+          - spread: node.id
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+        window: 120s
+    labels:
+      service: "hdfs"
+      component: "datanode"
+
+  resourcemanager:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    hostname: resourcemanager
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - YARN_CONF_yarn_log___aggregation___enable=true
+      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
+      - YARN_CONF_yarn_resourcemanager_address=resourcemanager:8032
+      - YARN_CONF_yarn_resourcemanager_scheduler_address=resourcemanager:8030
+      - YARN_CONF_yarn_resourcemanager_resource__tracker_address=resourcemanager:8031
+      - YARN_CONF_yarn_nodemanager_aux___services=mapreduce_shuffle
+      - YARN_CONF_yarn_nodemanager_resource_memory___mb=4096
+      - YARN_CONF_yarn_scheduler_maximum___allocation___mb=4096
+      - YARN_CONF_yarn_scheduler_minimum___allocation___mb=512
+    ports:
+      - target: 8088
+        published: 8088
+        protocol: tcp
+        mode: ingress
+      - target: 8032
+        published: 8032
+        protocol: tcp
+        mode: ingress
+    networks:
+      - datapipeline
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8088/ws/v1/cluster/info"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == manager-1
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+    labels:
+      service: "yarn"
+      component: "resourcemanager"
+
+  nodemanager:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    hostname: nodemanager
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
+      - YARN_CONF_yarn_resourcemanager_address=resourcemanager:8032
+      - YARN_CONF_yarn_resourcemanager_scheduler_address=resourcemanager:8030
+      - YARN_CONF_yarn_resourcemanager_resource__tracker_address=resourcemanager:8031
+      - YARN_CONF_yarn_nodemanager_aux___services=mapreduce_shuffle
+      - YARN_CONF_yarn_nodemanager_resource_memory___mb=4096
+      - YARN_CONF_yarn_nodemanager_resource_cpu___vcores=2
+      - YARN_CONF_yarn_nodemanager_vmem___check___enabled=false
+      - YARN_CONF_yarn_nodemanager_pmem___check___enabled=false
+    ports:
+      - target: 8042
+        published: 8042
+        protocol: tcp
+        mode: ingress
+    networks:
+      - datapipeline
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == manager-2
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+    labels:
+      service: "yarn"
+      component: "nodemanager"
+
+  # ==========================================
+  # APACHE SPARK 3.4.1
+  # ==========================================
+  spark-master:
+    image: apache/spark:3.4.1
+    hostname: spark-master
+    user: root
+    environment:
+      - SPARK_MODE=master
+      - SPARK_MASTER_WEBUI_PORT=8080
+      - HADOOP_CONF_DIR=/opt/hadoop-conf
+      - YARN_CONF_DIR=/opt/hadoop-conf
+      - PATH=/opt/spark/bin:/opt/spark/sbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      - PIP_DEFAULT_TIMEOUT=300
+      - PIP_RETRIES=5
+      - PYTHONWARNINGS=ignore:Unverified HTTPS request
+    volumes:
+      - spark-ivy-cache:/root/.ivy2
+      - spark-pip-cache:/root/.cache/pip
+      - spark-python-libs:/opt/spark-python-libs
+    ports:
+      - target: 7077
+        published: 7077
+        protocol: tcp
+        mode: ingress
+      - target: 8080
+        published: 8080
+        protocol: tcp
+        mode: ingress
+      - target: 4040
+        published: 4040
+        protocol: tcp
+        mode: ingress
+    networks:
+      - datapipeline
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'org.apache.spark.deploy.master.Master'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == manager-1
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '2'
+          memory: 2G
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+    command: >
+      bash -c "
+      /opt/spark/sbin/start-master.sh && tail -f /dev/null
+      "
+    labels:
+      service: "spark"
+      component: "master"
+
+  spark-worker:
+    image: apache/spark:3.4.1
+    hostname: spark-worker
+    user: root
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=4G
+      - SPARK_WORKER_CORES=6
+      - SPARK_WORKER_WEBUI_PORT=8081
+      - HADOOP_CONF_DIR=/opt/hadoop-conf
+      - YARN_CONF_DIR=/opt/hadoop-conf
+      - PATH=/opt/spark/bin:/opt/spark/sbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      - PIP_DEFAULT_TIMEOUT=300
+      - PIP_RETRIES=5
+      - PYTHONWARNINGS=ignore:Unverified HTTPS request
+    volumes:
+      - spark-ivy-cache:/root/.ivy2
+      - spark-pip-cache:/root/.cache/pip
+      - spark-python-libs:/opt/spark-python-libs
+    ports:
+      - target: 8081
+        published: 8081
+        protocol: tcp
+        mode: ingress
+    networks:
+      - datapipeline
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == manager-2
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '2'
+          memory: 2G
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+    command: >
+      bash -c "
+      sleep 30 && /opt/spark/sbin/start-worker.sh spark://spark-master:7077 && tail -f /dev/null
+      "
+    labels:
+      service: "spark"
+      component: "worker"
+
+  # ==========================================
+  # KAFKA 3.5 CLUSTER
+  # ==========================================
+  zookeeper:
+    image: confluentinc/cp-zookeeper:6.2.0
+    hostname: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SYNC_LIMIT: 5
+      ZOOKEEPER_INIT_LIMIT: 10
+      ZOOKEEPER_SERVER_1: zookeeper:2888:3888
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
+    ports:
+      - target: 2181
+        published: 2181
+        protocol: tcp
+        mode: ingress
+    networks:
+      - datapipeline
+    healthcheck:
+      test: ["CMD", "echo", "ruok", "|", "nc", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == manager-1
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+    labels:
+      service: "kafka"
+      component: "zookeeper"
+
+  kafka:
+    image: confluentinc/cp-kafka:6.2.0
+    hostname: kafka
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://0.0.0.0:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      PATH: /usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/sbin:/bin
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    ports:
+      - target: 9092
+        published: 9092
+        protocol: tcp
+        mode: ingress
+      - target: 9093
+        published: 9093
+        protocol: tcp
+        mode: ingress
+    networks:
+      - datapipeline
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions.sh", "--bootstrap-server=localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == manager-2
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+    labels:
+      service: "kafka"
+      component: "broker"
+
+  # ==========================================
+  # API REST PARA RECOMENDACIONES
+  # ==========================================
+  api:
+    image: localhost:5000/recs-api:latest  # Compilar y pushear a registro privado
+    hostname: api
+    environment:
+      - KAFKA_BOOTSTRAP=kafka:9092
+      - METRICS_TOPIC=metrics
+      - PYTHONPATH=/app:/app/src
+      - SPARK_HOME=/opt/spark
+      - HADOOP_CONF_DIR=/opt/hadoop-conf
+    ports:
+      - target: 8000
+        published: 8000
+        protocol: tcp
+        mode: ingress
+    networks:
+      - datapipeline
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/recommendations/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      replicas: 2
+      placement:
+        # Distribuir replicas entre managers
+        preferences:
+          - spread: node.id
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+        window: 120s
+      # Load balancing automático de Swarm
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+    labels:
+      service: "api"
+      tier: "frontend"
+
+  # ==========================================
+  # DASHBOARD STREAMLIT
+  # ==========================================
+  dashboard:
+    image: localhost:5000/recs-dashboard:latest  # Compilar y pushear a registro privado
+    hostname: dashboard
+    environment:
+      - API_BASE_URL=http://api:8000
+    ports:
+      - target: 8501
+        published: 8501
+        protocol: tcp
+        mode: ingress
+    networks:
+      - datapipeline
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      replicas: 1
+      placement:
+        # Ejecutar en uno de los managers (preferencia)
+        preferences:
+          - spread: node.id
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+    labels:
+      service: "dashboard"
+      tier: "frontend"
