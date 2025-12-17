@@ -43,14 +43,25 @@ async def start_producer(bootstrap_servers: str = KAFKA_BOOTSTRAP):
         return
 
     # Ajustes básicos de rendimiento/fiabilidad
-    producer = AIOKafkaProducer(
-        bootstrap_servers=bootstrap_servers,
-        value_serializer=lambda v: json.dumps(v).encode("utf-8"),
-        acks="all",
-        linger_ms=20,
-        compression_type="lz4",
-        retries=5,
-    )
+    # Intentamos crear el productor con la firma completa. Si la versión de
+    # aiokafka instalada no acepta alguno de los kwargs, capturamos TypeError
+    # y creamos el productor con la firma mínima.
+    try:
+        producer = AIOKafkaProducer(
+            bootstrap_servers=bootstrap_servers,
+            value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+            acks="all",
+            linger_ms=20,
+            compression_type="lz4",
+            retries=5,
+        )
+    except TypeError as e:
+        logger.warning("AIOKafkaProducer.__init__ signature mismatch: %s. Falling back to minimal args.", e)
+        producer = AIOKafkaProducer(
+            bootstrap_servers=bootstrap_servers,
+            value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+        )
+
     await producer.start()
     logger.info("✅ Ratings producer started")
 

@@ -34,8 +34,8 @@ import numpy as np
 
 # Configuración por defecto y lectura de entorno
 DEFAULT_HTTP_URL = os.getenv("RATINGS_HTTP_URL", "http://api:8000/ratings")
-DEFAULT_THROUGHPUT = int(os.getenv("THROUGHPUT", "100"))
-DEFAULT_BATCH = int(os.getenv("BATCH_SIZE", "50"))
+DEFAULT_THROUGHPUT = int(os.getenv("THROUGHPUT", "10")) 
+DEFAULT_BATCH = int(os.getenv("BATCH_SIZE", "1")) 
 DEFAULT_TIMEOUT = float(os.getenv("TIMEOUT", "5"))
 
 # Intentar reutilizar el generador latente existente
@@ -52,53 +52,70 @@ try:
     )
     print("✅ Usando LatentFactorGenerator importado de latent_generator.py")
 except Exception:
-    # Fallback: versión ligera compatible
-    print("⚠️  No se pudo importar LatentFactorGenerator, usando fallback interno")
+    # Intentar importar por ruta relativa si el import absoluto falla
+    try:
+        # Intento alternativa: importar desde el mismo directorio (cuando ejecutas el script directamente)
+        local_dir = os.path.dirname(__file__)
+        if local_dir not in sys.path:
+            sys.path.insert(0, local_dir)
+        from latent_generator import (
+            LatentFactorGenerator,
+            USER_ID_MIN,
+            USER_ID_MAX,
+            MOVIE_ID_MIN,
+            MOVIE_ID_MAX,
+            RATING_MIN,
+            RATING_MAX,
+        )
+        print("✅ Usando LatentFactorGenerator importado desde el directorio local")
+    except Exception:
+        # Fallback: versión ligera compatible
+        print("⚠️  No se pudo importar LatentFactorGenerator, usando fallback interno")
 
-    USER_ID_MIN = 1
-    USER_ID_MAX = 138493
-    MOVIE_ID_MIN = 1
-    MOVIE_ID_MAX = 131262
-    RATING_MIN = 0.5
-    RATING_MAX = 5.0
+        USER_ID_MIN = 1
+        USER_ID_MAX = 138493
+        MOVIE_ID_MIN = 1
+        MOVIE_ID_MAX = 131262
+        RATING_MIN = 0.5
+        RATING_MAX = 5.0
 
-    class LatentFactorGenerator:
-        def __init__(self, rank=20, global_mean=3.5, user_bias_std=0.15, item_bias_std=0.10, latent_std=None, seed=None):
-            self.rank = rank
-            self.global_mean = global_mean
-            self.user_bias_std = user_bias_std
-            self.item_bias_std = item_bias_std
-            self.latent_std = latent_std if latent_std is not None else 1.0 / (rank ** 0.5)
-            self.user_cache = {}
-            self.item_cache = {}
-            if seed is not None:
-                np.random.seed(seed)
-                random.seed(seed)
+        class LatentFactorGenerator:
+            def __init__(self, rank=20, global_mean=3.5, user_bias_std=0.15, item_bias_std=0.10, latent_std=None, seed=None):
+                self.rank = rank
+                self.global_mean = global_mean
+                self.user_bias_std = user_bias_std
+                self.item_bias_std = item_bias_std
+                self.latent_std = latent_std if latent_std is not None else 1.0 / (rank ** 0.5)
+                self.user_cache = {}
+                self.item_cache = {}
+                if seed is not None:
+                    np.random.seed(seed)
+                    random.seed(seed)
 
-        def get_user_factors(self, user_id):
-            if user_id in self.user_cache:
-                return self.user_cache[user_id]
-            factors = np.random.normal(0, self.latent_std, self.rank)
-            bias = np.random.normal(0, self.user_bias_std)
-            self.user_cache[user_id] = (factors, bias)
-            return factors, bias
+            def get_user_factors(self, user_id):
+                if user_id in self.user_cache:
+                    return self.user_cache[user_id]
+                factors = np.random.normal(0, self.latent_std, self.rank)
+                bias = np.random.normal(0, self.user_bias_std)
+                self.user_cache[user_id] = (factors, bias)
+                return factors, bias
 
-        def get_item_factors(self, item_id):
-            if item_id in self.item_cache:
-                return self.item_cache[item_id]
-            factors = np.random.normal(0, self.latent_std, self.rank)
-            bias = np.random.normal(0, self.item_bias_std)
-            self.item_cache[item_id] = (factors, bias)
-            return factors, bias
+            def get_item_factors(self, item_id):
+                if item_id in self.item_cache:
+                    return self.item_cache[item_id]
+                factors = np.random.normal(0, self.latent_std, self.rank)
+                bias = np.random.normal(0, self.item_bias_std)
+                self.item_cache[item_id] = (factors, bias)
+                return factors, bias
 
-        def predict_rating(self, user_id, item_id, noise_std=0.4):
-            uf, ub = self.get_user_factors(user_id)
-            vf, vb = self.get_item_factors(item_id)
-            dot = float(np.dot(uf, vf))
-            rating = dot + ub + vb + self.global_mean + np.random.normal(0, noise_std)
-            rating = max(RATING_MIN, min(RATING_MAX, rating))
-            rating = round(rating * 2) / 2.0
-            return float(rating)
+            def predict_rating(self, user_id, item_id, noise_std=0.4):
+                uf, ub = self.get_user_factors(user_id)
+                vf, vb = self.get_item_factors(item_id)
+                dot = float(np.dot(uf, vf))
+                rating = dot + ub + vb + self.global_mean + np.random.normal(0, noise_std)
+                rating = max(RATING_MIN, min(RATING_MAX, rating))
+                rating = round(rating * 2) / 2.0
+                return float(rating)
 
 
 def generate_rating_record(generator: LatentFactorGenerator) -> Dict:

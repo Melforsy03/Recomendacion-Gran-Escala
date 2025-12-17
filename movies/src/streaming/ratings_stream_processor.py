@@ -45,11 +45,11 @@ HDFS_CHECKPOINT_PATH = f"{HDFS_BASE}/checkpoints/ratings_stream/processor"
 
 # Ventanas
 TUMBLING_WINDOW = "1 minute"
-SLIDING_WINDOW_SIZE = "5 minutes"
+SLIDING_WINDOW_SIZE = "3 minutes"
 SLIDING_WINDOW_SLIDE = "1 minute"
 
 # Watermark para late data
-WATERMARK_DELAY = "10 seconds"
+WATERMARK_DELAY = "1 minutes"
 
 # Top-N películas
 TOP_N_MOVIES = 10
