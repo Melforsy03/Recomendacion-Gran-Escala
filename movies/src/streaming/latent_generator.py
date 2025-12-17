@@ -34,12 +34,26 @@ import numpy as np
 from typing import Dict, Tuple
 from datetime import datetime
 
-from pyspark.sql import SparkSession, DataFrame
-from pyspark.sql import functions as F
-from pyspark.sql.types import (
-    StructType, StructField, IntegerType, 
-    DoubleType, LongType
-)
+# Hacer los imports de PySpark opcionales para permitir importar el módulo
+# incluso cuando PySpark no está instalado (útil para entornos ligeros)
+try:
+    from pyspark.sql import SparkSession, DataFrame
+    from pyspark.sql import functions as F
+    from pyspark.sql.types import (
+        StructType, StructField, IntegerType,
+        DoubleType, LongType
+    )
+    SPARK_AVAILABLE = True
+except Exception:
+    SPARK_AVAILABLE = False
+    SparkSession = None
+    DataFrame = None
+    F = None
+    StructType = None
+    StructField = None
+    IntegerType = None
+    DoubleType = None
+    LongType = None
 
 # ==========================================
 # Configuración
@@ -78,12 +92,15 @@ CACHE_SIZE_ITEMS = 10000       # Cachear factores de 10k películas
 # Esquema de Datos
 # ==========================================
 
-RATING_SCHEMA = StructType([
-    StructField("userId", IntegerType(), False),
-    StructField("movieId", IntegerType(), False),
-    StructField("rating", DoubleType(), False),
-    StructField("timestamp", LongType(), False)
-])
+if SPARK_AVAILABLE:
+    RATING_SCHEMA = StructType([
+        StructField("userId", IntegerType(), False),
+        StructField("movieId", IntegerType(), False),
+        StructField("rating", DoubleType(), False),
+        StructField("timestamp", LongType(), False)
+    ])
+else:
+    RATING_SCHEMA = None
 
 
 # ==========================================

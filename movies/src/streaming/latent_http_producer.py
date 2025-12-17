@@ -40,7 +40,7 @@ DEFAULT_TIMEOUT = float(os.getenv("TIMEOUT", "5"))
 
 # Intentar reutilizar el generador latente existente
 try:
-    # Intentar import relativo dentro del paquete
+    # Intentar import desde el paquete instalado/estructura de proyecto
     from movies.src.streaming.latent_generator import (
         LatentFactorGenerator,
         USER_ID_MIN,
@@ -51,13 +51,17 @@ try:
         RATING_MAX,
     )
     print("✅ Usando LatentFactorGenerator importado de latent_generator.py")
-except Exception:
-    # Intentar importar por ruta relativa si el import absoluto falla
+except Exception as e_pkg:
+    # Intentar importar por ruta local si el import absoluto falla
     try:
-        # Intento alternativa: importar desde el mismo directorio (cuando ejecutas el script directamente)
+        # Añadir rutas útiles a sys.path: directorio del script, su padre, y la raíz del repo
         local_dir = os.path.dirname(__file__)
-        if local_dir not in sys.path:
-            sys.path.insert(0, local_dir)
+        parent_dir = os.path.abspath(os.path.join(local_dir, os.pardir))
+        repo_root = os.path.abspath(os.path.join(local_dir, os.pardir, os.pardir, os.pardir))
+        for p in (local_dir, parent_dir, repo_root):
+            if p and p not in sys.path:
+                sys.path.insert(0, p)
+
         from latent_generator import (
             LatentFactorGenerator,
             USER_ID_MIN,
@@ -68,9 +72,9 @@ except Exception:
             RATING_MAX,
         )
         print("✅ Usando LatentFactorGenerator importado desde el directorio local")
-    except Exception:
+    except Exception as e_local:
         # Fallback: versión ligera compatible
-        print("⚠️  No se pudo importar LatentFactorGenerator, usando fallback interno")
+        print(f"⚠️  No se pudo importar LatentFactorGenerator (package error: {e_pkg}; local error: {e_local}), usando fallback interno")
 
         USER_ID_MIN = 1
         USER_ID_MAX = 138493
